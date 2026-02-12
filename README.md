@@ -51,7 +51,7 @@ If you prefer to install the library system-wide or use it across multiple proje
 
 2.  **Use in your project:**
     ```cmake
-    find_package(QtLiquidGlass 0.1 REQUIRED)
+    find_package(QtLiquidGlass 0.2 REQUIRED)
     target_link_libraries(YourApp PRIVATE QtLiquidGlass::QtLiquidGlass)
     ```
 
@@ -128,7 +128,7 @@ The included example demonstrates how to switch materials and configure properti
 | Enum | Description |
 |------|-------------|
 | `Material::Sidebar` | Thick, vibrant blur (Standard macOS sidebar) |
-| `Material::Titlebar` | "Abutted Sidebar" - blends seamlessy with sidebars |
+| `Material::Titlebar` | "Abutted Sidebar" - blends seamlessly with sidebars |
 | `Material::Inspector` | Sidebar material for detail/inspector panels |
 | `Material::Widgets` | macOS Big Sur+ widget background style |
 | `Material::Sheet` | Lighter blur for modal sheets |
