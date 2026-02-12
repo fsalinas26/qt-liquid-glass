@@ -20,9 +20,13 @@
         // Explicit setters for private and public properties
         void SetGlassViewVariant(int viewId, int variant);
         void SetGlassViewMaterial(int viewId, int material); // Fallback standard API
+        void SetGlassViewBlendingMode(int viewId, int mode); // 0=BehindWindow, 1=WithinWindow
         void SetGlassViewScrim(int viewId, int scrim);
         void SetGlassViewSubdued(int viewId, int subdued);
-        
+        void SetGlassViewContentLensing(int viewId, int lensing);
+        void SetGlassViewAdaptiveAppearance(int viewId, int appearance); // 0=light,1=dark,2=auto
+        void SetGlassViewInteractionState(int viewId, int state);       // 0=normal,1=hovered
+
         void RemoveGlassEffectView(int viewId);
     }
 #endif

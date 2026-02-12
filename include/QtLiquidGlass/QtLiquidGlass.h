@@ -24,13 +24,31 @@ enum class Material {
     Chromatic
 };
 
-struct Options {
-    double cornerRadius = 0.0;
-    QString tintColor = "";    // "#RRGGBB" or "#RRGGBBAA"
-    bool opaque = false;
+enum class BlendingMode {
+    BehindWindow = 0,
+    WithinWindow = 1
 };
 
-// CREATE a glass effect behind a QWidget.
+enum class AdaptiveAppearance {
+    Light = 0,
+    Dark = 1,
+    Auto = 2
+};
+
+enum class InteractionState {
+    Normal = 0,
+    Hovered = 1
+};
+
+struct Options {
+    double cornerRadius = 0.0;
+    QString tintColor = "";    // "#RRGGBB" or "#AARRGGBB"
+    bool opaque = false;
+    BlendingMode blendingMode = BlendingMode::BehindWindow;
+    AdaptiveAppearance appearance = AdaptiveAppearance::Auto;
+    InteractionState interaction = InteractionState::Normal;
+};
+
 // Returns id >= 0, or -1 on failure.
 int addGlassEffect(QWidget* widget,
                    Material material = Material::Sidebar,
@@ -41,9 +59,6 @@ void configure(int id, const Options& opts);
 
 // Modify custom int properties (variant, scrimState, subduedState)
 void setIntProperty(int id, const QString& key, long long value);
-
-// Modify custom string properties
-void setStringProperty(int id, const QString& key, const QString& value);
 
 // Remove and cleanup
 void remove(int id);

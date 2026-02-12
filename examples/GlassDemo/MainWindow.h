@@ -22,7 +22,6 @@ private slots:
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
-    void mouseMoveEvent(QMouseEvent *event) override;
 
 private:
     void setupUi();
@@ -36,8 +35,6 @@ private:
     PlayerPage* m_playerPage;
     SettingsPage* m_settingsPage;
     PreviewPage* m_previewPage;
-    
-    QPoint m_dragPosition;
     
     QtLiquidGlass::Options m_currentOpts;
     QtLiquidGlass::Material m_currentMat = QtLiquidGlass::Material::Sidebar;

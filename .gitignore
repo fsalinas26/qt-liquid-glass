@@ -4,3 +4,4 @@ build/
 *.user.*
 CMakeLists.txt.user
 
+.idea/QtSettings.xml

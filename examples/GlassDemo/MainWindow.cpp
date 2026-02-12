@@ -2,29 +2,22 @@
 #include <QVBoxLayout>
 #include <QPropertyAnimation>
 #include <QDebug>
+#include <QWindow>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
-    // 1. Essential for the glass effect to show through the window
-    //    Use FramelessWindowHint for a modern look.
     setWindowFlags(Qt::Window);
-    
-    // 2. Ensure the Qt window background is transparent
+
+    // Transparent background so the glass effect shows through
     setAutoFillBackground(false);
     QPalette pal = palette();
     pal.setColor(QPalette::Window, Qt::transparent);
     setPalette(pal);
 
-    // 3. Setup the actual content (Example is Music Player UI)
     setupUi();
     resize(620, 240);
 
-    // 4. Apply the liquid glass effect
     QtLiquidGlass::Options opts;
     opts.cornerRadius = 16.0;
-    opts.tintColor = "";    // Empty = clear glass
-    opts.opaque = false;    // Allow desktop to show through
-    
-    // Create the effect behind our window
     m_glassId = QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::Sidebar, opts);
 }
 
@@ -38,13 +31,9 @@ void MainWindow::updateGlass(QtLiquidGlass::Options opts, QtLiquidGlass::Materia
     m_currentOpts = opts;
     m_currentMat = mat;
 
-    // Demonstration of updating settings at runtime
     if (m_glassId >= 0) {
-        // Update parameters like radius, tint, opacity
         QtLiquidGlass::configure(m_glassId, opts);
-
-        // Note: To change the MATERIAL (e.g. Sidebar -> Menu), we currently
-        // re-add the effect. The library handles replacement automatically.
+        // Re-add to switch material; replaces the existing view automatically
         m_glassId = QtLiquidGlass::addGlassEffect(this, mat, opts);
     }
 }
@@ -52,7 +41,6 @@ void MainWindow::updateGlass(QtLiquidGlass::Options opts, QtLiquidGlass::Materia
 void MainWindow::setupUi() {
     QWidget *central = new QWidget(this);
     
-    // Important: Central widget must also be transparent
     central->setAutoFillBackground(false);
     QPalette pal = central->palette();
     pal.setColor(QPalette::Window, Qt::transparent);
@@ -85,7 +73,7 @@ void MainWindow::setupConnections() {
 
     connect(m_playerPage, &PlayerPage::settingsClicked, [this]() {
         m_stack->fadeTo(1); 
-        if (height() < 400) animateResize(620, 400);
+        if (height() < 500) animateResize(620, 500);
     });
     
     connect(m_playerPage, &PlayerPage::miniModeToggled, this, &MainWindow::toggleMiniMode);
@@ -141,18 +129,13 @@ void MainWindow::animateResize(int w, int h) {
     anim->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
-// Window Dragging Logic (since we are frameless)
+// Window Dragging Logic (drag from anywhere in the window)
 
 void MainWindow::mousePressEvent(QMouseEvent *event) {
     if (event->button() == Qt::LeftButton) {
-        m_dragPosition = event->globalPosition().toPoint() - frameGeometry().topLeft();
-        event->accept();
-    }
-}
-
-void MainWindow::mouseMoveEvent(QMouseEvent *event) {
-    if (event->buttons() & Qt::LeftButton) {
-        move(event->globalPosition().toPoint() - m_dragPosition);
+        if (windowHandle()) {
+            windowHandle()->startSystemMove();
+        }
         event->accept();
     }
 }

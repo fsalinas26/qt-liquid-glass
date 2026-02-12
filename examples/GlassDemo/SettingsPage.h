@@ -25,16 +25,22 @@ private:
     void setupUi();
     void emitChange();
     void cycleMaterial(int delta);
+    void cycleAppearance(int delta);
     void updateCodeSnippet();
     void copyToClipboard();
 
     QSlider *radiusSlider;
     QLineEdit *tintInput;
     QCheckBox *opaqueCheck;
-    
+    QCheckBox *hoveredCheck;
+
     QLabel *materialLabel;
     int m_materialIndex = 0;
     QStringList m_materials;
+
+    QLabel *appearanceLabel;
+    int m_appearanceIndex = 2; // Auto
+    QStringList m_appearances;
 
     QTextEdit *codeDisplay;
     QPushButton *copyBtn;

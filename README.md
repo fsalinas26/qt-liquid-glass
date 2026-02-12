@@ -16,11 +16,12 @@
 
 ## 🧩 Features
 
--  **Native Glass Effects** - Real `NSGlassEffectView` integration (Private API) with `NSVisualEffectView` fallback.
--  **Qt Integration** - Works seamlessly with `QWidget` and `QMainWindow`.
--  **Fully Customizable** - Corner radius, tint colors, and glass materials (Sidebar, HUD, Popover, etc.).
--  **Frameless Ready** - Smart injection strategy handles standard windows AND frameless windows (`Qt::FramelessWindowHint`).
--  **Auto Appearance** - Respects system light/dark mode.
+-  **Native Glass Effects** — Real `NSGlassEffectView` integration (Private API) with `NSVisualEffectView` fallback for older macOS.
+-  **Qt Integration** — Works seamlessly with `QWidget` and `QMainWindow`.
+-  **15 Materials** — Sidebar, HUD, Popover, Frosted, ClearGlass, Chromatic, and more.
+-  **Appearance Control** — Force light/dark mode or follow the system automatically.
+-  **Interaction States** — Normal and hovered states for interactive glass surfaces.
+-  **Frameless Ready** — Handles standard windows and frameless windows (`Qt::FramelessWindowHint`).
 
 ## 🚀 Installation
 
@@ -55,7 +56,7 @@ If you prefer to install the library system-wide or use it across multiple proje
     ```
 
 ### Requirements
-- **macOS 10.14+**
+- **macOS 26 (Tahoe)** for `NSGlassEffectView` (Liquid Glass). Falls back to `NSVisualEffectView` on macOS 10.14+.
 - **Qt 6.2+** (Core, Widgets)
 - **CMake 3.16+**
 
@@ -72,20 +73,16 @@ int main(int argc, char *argv[]) {
 
     // 1. Create your window
     QMainWindow window;
-    
-    // 2. Setup for Glass (Frameless looks best)
-    window.setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
-    window.setAttribute(Qt::WA_TranslucentBackground); // Critical for transparency
-    
-    // 3. Apply the Liquid Glass Effect
+    window.setWindowFlags(Qt::Window);
+
+    // 2. Configure glass options
     QtLiquidGlass::Options opts;
     opts.cornerRadius = 16.0;
-    opts.tintColor = ""; // Clear tint (or "#RRGGBB")
-    opts.opaque = false; // Allow desktop to show through
+    opts.tintColor = "#80FFFFFF";
+    opts.appearance = QtLiquidGlass::AdaptiveAppearance::Auto;
 
-    // Create the effect behind the window
-    // Supported Materials: Sidebar, Header/Titlebar, Inspector, Widgets, Sheet, Hud, WindowBackground, Popover, Menu, FullscreenUI, ControlCenter, Tooltip
-    QtLiquidGlass::addGlassEffect(&window, QtLiquidGlass::Material::Sidebar, opts);
+    // 3. Apply the Liquid Glass effect
+    int id = QtLiquidGlass::addGlassEffect(&window, QtLiquidGlass::Material::Sidebar, opts);
 
     window.resize(600, 400);
     window.show();
@@ -93,6 +90,8 @@ int main(int argc, char *argv[]) {
     return a.exec();
 }
 ```
+
+> **Note**: The library automatically sets `WA_TranslucentBackground` and configures the `NSWindow` for transparency. You don't need to do this manually.
 
 ## 🎛️ Demo Application
 
@@ -109,8 +108,20 @@ The included example demonstrates how to switch materials and configure properti
 | Method | Description |
 |--------|-------------|
 | `addGlassEffect(widget, material, options)` | Applies the glass effect behind the widget. Returns an `int` ID. |
-| `configure(id, options)` | Updates radius, tint, opacity dynamically for an existing effect. |
+| `configure(id, options)` | Updates all properties (radius, tint, appearance, etc.) for an existing effect. |
+| `setIntProperty(id, key, value)` | Sets a low-level property by name. Keys: `variant`, `material`, `scrimState`, `subduedState`, `contentLensing`, `appearance`, `interaction`, `blendingMode`. |
 | `remove(id)` | Removes the effect and cleans up native views. |
+
+### Options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `cornerRadius` | `double` | `0.0` | Corner radius of the glass effect. |
+| `tintColor` | `QString` | `""` | Tint overlay in `#RRGGBB` or `#AARRGGBB` format. Empty = no tint. |
+| `opaque` | `bool` | `false` | Adds a solid backing layer behind the glass. |
+| `blendingMode` | `BlendingMode` | `BehindWindow` | `BehindWindow` blurs desktop content; `WithinWindow` blurs app content. |
+| `appearance` | `AdaptiveAppearance` | `Auto` | `Light`, `Dark`, or `Auto` (follows system). |
+| `interaction` | `InteractionState` | `Normal` | `Normal` or `Hovered` (elevated highlight state). |
 
 ### Materials
 
@@ -123,6 +134,7 @@ The included example demonstrates how to switch materials and configure properti
 | `Material::Sheet` | Lighter blur for modal sheets |
 | `Material::Hud` | Dark, satiny material for HUDs |
 | `Material::Popover` | Standard popover material |
+| `Material::Menu` | Notification-center style glass for menus |
 | `Material::WindowBackground` | Subtle background blur |
 | `Material::FullscreenUI` | Deep blur for fullscreen content |
 | `Material::ControlCenter` | Modern, translucent module background |
@@ -140,10 +152,12 @@ Qt-liquid-glass uses a smart injection strategy to place the native glass layer 
 </div>
 
 1.  **Native Backend**: Uses Objective-C++ to inject a native `NSView` into the window hierarchy.
-2.  **Smart Injection**: 
+2.  **Smart Injection**:
     *   **Standard Windows**: Injects the glass view as a *sibling* behind the Qt root view in the `NSThemeFrame`.
     *   **Frameless Windows**: Performs a "Content Swap" to wrap the Qt view in a container, ensuring the glass sits strictly behind the Qt rendering layer.
-3.  **Transparency**: Automatically forces the `NSWindow` to be transparent so the blur shows through.
+    *   **Child Widgets**: Injects the glass view directly inside the widget's native view, behind its children.
+    *   **Duplicate Detection**: Uses Objective-C associated objects to automatically remove any existing glass before re-adding.
+3.  **Fallback**: On macOS versions without `NSGlassEffectView`, falls back to `NSVisualEffectView` with mapped material values.
 
 ## 🙏 Acknowledgments
 

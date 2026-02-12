@@ -7,13 +7,23 @@
 #include <objc/message.h>
 #include <map>
 
-// Simple registry so we can address a view by numeric id.
-static std::map<int, NSView *> g_glassViews;
-static int g_nextViewId = 0;
+// -----------------------------------------------------------------------------
+// Internal Registry & Types
+// -----------------------------------------------------------------------------
 
-// Keys for objc-associated views on a container
-static const void *kGlassEffectKey = &kGlassEffectKey;
-static const void *kBackgroundViewKey = &kBackgroundViewKey;
+struct GlassContext {
+    NSView* glassView;       // The visual effect view
+    NSBox* backgroundView;   // The optional opaque backing layer
+    NSView* hostView;        // The Qt Native View we attached to
+    NSView* containerView;   // The parent we injected into (NSThemeFrame for root windows)
+    int id;
+};
+
+static std::map<int, GlassContext> g_registry;
+static int g_nextViewId = 1; // Start at 1
+
+// Keys for objc-associated objects (to find ID from View)
+static const void *kGlassContextIdKey = &kGlassContextIdKey;
 
 #define RUN_ON_MAIN(block)                                  \
   if ([NSThread isMainThread]) {                            \
@@ -22,19 +32,15 @@ static const void *kBackgroundViewKey = &kBackgroundViewKey;
     dispatch_sync(dispatch_get_main_queue(), block);        \
   }
 
-/*!
- * AddGlassEffectView
- * -----------------
- * Creates an `NSGlassEffectView` (private) and inserts it behind the contentView.
- * The pointer received is the Cocoa `NSView` that backs the QWidget.
- * The view is retained in a registry so that we can manipulate or remove it later.
- *
- * Returns –1 on error.
- */
+// -----------------------------------------------------------------------------
+// Implementation
+// -----------------------------------------------------------------------------
+
+// Injects an NSGlassEffectView (or NSVisualEffectView fallback) behind the
+// given native view. Handles root windows (sibling injection into NSThemeFrame),
+// frameless windows (content swap), and child widgets. Returns a registry ID.
 extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
-  if (!nativeViewPtr) {
-    return -1;
-  }
+  if (!nativeViewPtr) return -1;
 
   __block int resultId = -1;
 
@@ -42,250 +48,229 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
     NSView *rootView = reinterpret_cast<NSView *>(nativeViewPtr);
     if (!rootView) return;
 
-    // -------------------------------------------------------------------------
-    // STRATEGY SELECTION: SIBLING INJECTION vs CONTENT SWAP vs CHILD FALLBACK
-    // -------------------------------------------------------------------------
-    // 1. Sibling Injection: If rootView has a superview, inject glass behind rootView.
-    // 2. Content Swap: If rootView IS the contentView (Frameless), replace contentView with a container.
-    // 3. Child Fallback: If all else fails, put glass inside rootView (on top of content, unfortunately).
+    // Remove existing glass to prevent stacking duplicates
+    NSNumber *existingId = objc_getAssociatedObject(rootView, kGlassContextIdKey);
+    if (existingId) {
+        RemoveGlassEffectView([existingId intValue]);
+    }
+
+    NSWindow *win = [rootView window];
+    bool isRoot = (win && [win contentView] == rootView);
 
     NSView *container = nil;
-    NSView *superview = [rootView superview];
-    bool performedSwap = false;
 
-    // Try to find the NSWindow
-    NSWindow *win = [rootView window];
-    
-    if (superview) {
-        // STRATEGY 1: Sibling Injection (Standard Windows)
-        container = superview;
-    } else if (win && [win contentView] == rootView) {
-        // STRATEGY 2: Content Swap (Frameless Windows)
-        // The Qt View is the root. We must wrap it.
+    if (isRoot) {
+        // Root window: force transparency and inject into the frame
+        [win setOpaque:NO];
+        [win setBackgroundColor:[NSColor clearColor]];
+        win.styleMask |= NSWindowStyleMaskFullSizeContentView;
+        win.titlebarAppearsTransparent = YES;
         
-        // Check if we already swapped it previously (container check)
-        // If we swap, 'rootView' becomes a child of the new container. 
-        // So next time, 'superview' will exist, and we use Strategy 1.
-        // But for the FIRST time, superview is nil.
-        
-        RUN_ON_MAIN(^{
+        // Inject into NSThemeFrame's content slot, or swap if needed
+        if ([rootView superview]) {
+            container = [rootView superview];
+        } else {
+            // Frameless: wrap rootView in a new container
             NSRect frame = [rootView frame];
             NSView *newContainer = [[NSView alloc] initWithFrame:frame];
             newContainer.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-            newContainer.wantsLayer = YES; // layer-backed for performance
+            newContainer.wantsLayer = YES;
             
-            // Important: Preserve the window's transparency setup
-            [win setOpaque:NO];
-            [win setBackgroundColor:[NSColor clearColor]];
+            [win setContentView:newContainer];
             
-            // Swap!
-            [win setContentView:newContainer]; // rootView is now detached
-            
-            // Add rootView back as a child of newContainer
             [rootView setFrame:newContainer.bounds];
             [rootView setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
             [newContainer addSubview:rootView];
-        });
-        
-        // Now container is the new view, and superview of rootView is container.
-        container = [rootView superview]; 
-        performedSwap = true;
+            
+            container = newContainer;
+        }
     } else {
-        // STRATEGY 3: Fallback (Child Injection)
+        // Child widget: inject inside its native view
         container = rootView;
     }
 
-    // Ensure window transparency (Critical for Glass)
-    if (win) {
-         [win setOpaque:NO];
-         [win setBackgroundColor:[NSColor clearColor]];
-         
-         // Enable full-size content view to allow glass behind titlebar
-         win.styleMask |= NSWindowStyleMaskFullSizeContentView;
-         win.titlebarAppearsTransparent = YES;
-         // win.titleVisibility = NSWindowTitleHidden; // Optional: Hide text, keep buttons
+    NSRect frameRect = (container == rootView) ? [rootView bounds] : [rootView frame];
+    if (isRoot && container != [rootView superview]) {
+         frameRect = [container bounds];
     }
 
-    // Remove previous glass and background views (if any)
-    // Note: We associate keys with 'rootView' (the Qt view) so we can find them later,
-    // even though they are physically attached to 'container' (superview).
-    NSView *oldGlass = objc_getAssociatedObject(rootView, kGlassEffectKey);
-    if (oldGlass) [oldGlass removeFromSuperview];
-    
-    NSView *oldBackground = objc_getAssociatedObject(rootView, kBackgroundViewKey);
-    if (oldBackground) [oldBackground removeFromSuperview];
-
-    // Frame logic:
-    // If we are in container (superview), we want rootView.frame (position in superview).
-    // If we are in rootView (fallback), we want rootView.bounds (0,0).
-    // If we just swapped, rootView is at 0,0 of container, so bounds/frame are same (ish).
-    NSRect frameRect = (container == [rootView superview]) ? [rootView frame] : [rootView bounds];
-    
-    // Correction for Swap/Sibling:
-    // If we are adding to 'container' (which is superview of rootView),
-    // we want the glass to match 'rootView's geometry.
-    
-    // In Content Swap, container is the root. rootView fills it. 
-    // So glass should fill it too.
-    if (performedSwap) {
-        frameRect = [container bounds];
-    }
-
+    // Optional opaque backing layer
     NSBox *backgroundView = nil;
-    
-    NSView *glass = nil;
-    Class glassCls = NSClassFromString(@"NSGlassEffectView");
-    if (glassCls) {
-      /**
-      * GLASS VIEW
-      */
-      glass = [[glassCls alloc] initWithFrame:frameRect];
-
-      if (opaque) {
-        // Create a background view behind the glass view using NSBox for proper background color
-        // (Keep this NSBox hack as it solves vibrancy blend issues)
+    if (opaque) {
         backgroundView = [[NSBox alloc] initWithFrame:frameRect];
         backgroundView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         backgroundView.boxType = NSBoxCustom;
         backgroundView.borderType = NSNoBorder;
         backgroundView.fillColor = [NSColor windowBackgroundColor];
         backgroundView.wantsLayer = YES;
-        
-        // Add background view behind rootView
-        if (container == [rootView superview]) {
-             [container addSubview:backgroundView positioned:NSWindowBelow relativeTo:rootView];
-        } else {
-             [container addSubview:backgroundView positioned:NSWindowBelow relativeTo:nil];
-        }
-      }
-    } else {
-      /**
-      * FALLBACK VISUAL EFFECT VIEW
-      */
-      NSVisualEffectView *visual = [[NSVisualEffectView alloc] initWithFrame:frameRect];
-      visual.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-      visual.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-      visual.material = NSVisualEffectMaterialUnderWindowBackground;
-      visual.state = NSVisualEffectStateActive;
-      glass = visual;
     }
 
-    // Ensure autoresize matches Qt view
-    glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-
-    // Add the glass view
-    if (container == [rootView superview]) {
-        // SIBLING INJECTION: Behind rootView
-        if (opaque && backgroundView) {
-            // glass on top of background, both behind rootView
-            [container addSubview:glass positioned:NSWindowAbove relativeTo:backgroundView];
-        } else {
-            [container addSubview:glass positioned:NSWindowBelow relativeTo:rootView];
-        }
+    NSView *glass = nil;
+    Class glassCls = NSClassFromString(@"NSGlassEffectView");
+    if (glassCls) {
+        glass = [[glassCls alloc] initWithFrame:frameRect];
     } else {
-        // CHILD INJECTION (Fallback): Bottom of rootView
-        if (opaque && backgroundView) {
+        // Fallback to NSVisualEffectView on older macOS
+        NSVisualEffectView *visual = [[NSVisualEffectView alloc] initWithFrame:frameRect];
+        visual.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+        visual.material = NSVisualEffectMaterialUnderWindowBackground;
+        visual.state = NSVisualEffectStateActive;
+        glass = visual;
+    }
+    glass.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    glass.wantsLayer = YES;
+
+    // Subview order: [Background] -> [Glass] -> [Qt Content]
+    if (container == rootView) {
+        if (backgroundView) {
+            [container addSubview:backgroundView positioned:NSWindowBelow relativeTo:nil];
             [container addSubview:glass positioned:NSWindowAbove relativeTo:backgroundView];
         } else {
             [container addSubview:glass positioned:NSWindowBelow relativeTo:nil];
         }
-    }
-    
-    // Associate views with the Qt view (rootView) for cleanup/access
-    objc_setAssociatedObject(rootView, kGlassEffectKey, glass, OBJC_ASSOCIATION_RETAIN);
-    if (backgroundView) {
-      objc_setAssociatedObject(rootView, kBackgroundViewKey, backgroundView, OBJC_ASSOCIATION_RETAIN);
     } else {
-      objc_setAssociatedObject(rootView, kBackgroundViewKey, nil, OBJC_ASSOCIATION_ASSIGN);
+        if (backgroundView) {
+            [container addSubview:backgroundView positioned:NSWindowBelow relativeTo:rootView];
+            [container addSubview:glass positioned:NSWindowAbove relativeTo:backgroundView];
+        } else {
+            [container addSubview:glass positioned:NSWindowBelow relativeTo:rootView];
+        }
     }
 
+    // Register context and associate the ID with the host view
     int id = g_nextViewId++;
-    g_glassViews[id] = glass;
+    GlassContext ctx;
+    ctx.id = id;
+    ctx.glassView = glass;
+    ctx.backgroundView = backgroundView;
+    ctx.hostView = rootView;
+    ctx.containerView = container;
+
+    g_registry[id] = ctx;
+    objc_setAssociatedObject(rootView, kGlassContextIdKey, @(id), OBJC_ASSOCIATION_RETAIN);
+    
     resultId = id;
   });
 
   return resultId;
 }
 
-// Configure glass view by id with raw color components
+// Sets corner radius (native setCornerRadius: or layer fallback) and tint color.
+// Also rounds the opaque backing layer and container (NSThemeFrame) to prevent
+// rectangular backgrounds from bleeding through transparent glass materials.
 extern "C" void ConfigureGlassView(int viewId, double cornerRadius, double r, double g, double b, double a) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    GlassContext& ctx = it->second;
 
-    // Corner radius via CALayer
-    glass.wantsLayer = YES;
-    glass.layer.cornerRadius = cornerRadius;
-    glass.layer.masksToBounds = YES;
+    if (ctx.glassView) {
+        // NSGlassEffectView has its own setCornerRadius: (default 8.0)
+        SEL setCR = sel_registerName("setCornerRadius:");
+        if ([ctx.glassView respondsToSelector:setCR]) {
+            ((void (*)(id, SEL, double))objc_msgSend)(ctx.glassView, setCR, cornerRadius);
+        } else {
+            ctx.glassView.layer.cornerRadius = cornerRadius;
+            ctx.glassView.layer.masksToBounds = (cornerRadius > 0);
+        }
 
-    // corner radius for the background view
-    // Note: background view is associated with the original Qt rootView, but attached to container.
-    // We need to find the rootView to get the background view association.
-    // Since we don't store the rootView in the map, we can traverse up or fix the map.
-    // Actually, ConfigureGlassView in original code relied on glass.superview logic 
-    // but we moved things around.
-    
-    // Simplified approach: Assume we can find it if it's a sibling or child.
-    // Or just skip background radius sync for now if it's complex, 
-    // but let's try to find the background view via superview subviews if possible.
-    // Ideally we should store the background view in the map too or a struct.
-    
-    // For this refactor, we focus on the Tint.
-    
-    NSColor* c = [NSColor colorWithRed:r green:g blue:b alpha:a];
-    if (c && [glass respondsToSelector:@selector(setTintColor:)]) {
-        [(id)glass setTintColor:c];
-    } else if (c) {
-        glass.layer.backgroundColor = c.CGColor;
+        // Tint: use native setTintColor: if available, otherwise layer bg
+        NSColor* c = [NSColor colorWithRed:r green:g blue:b alpha:a];
+        if (c && [ctx.glassView respondsToSelector:@selector(setTintColor:)]) {
+            [(id)ctx.glassView setTintColor:c];
+        } else if (c) {
+            ctx.glassView.layer.backgroundColor = c.CGColor;
+        }
     }
+
+    // Sync corner radius on the opaque backing layer
+    if (ctx.backgroundView) {
+        ctx.backgroundView.layer.cornerRadius = cornerRadius;
+        ctx.backgroundView.layer.masksToBounds = (cornerRadius > 0);
+    }
+
+    // Round the container (NSThemeFrame) so its rectangular background
+    // doesn't bleed through behind transparent glass materials
+    if (ctx.containerView && ctx.containerView != ctx.hostView) {
+        ctx.containerView.wantsLayer = YES;
+        ctx.containerView.layer.cornerRadius = cornerRadius;
+        ctx.containerView.layer.masksToBounds = (cornerRadius > 0);
+    }
+
+  });
+}
+
+// Detaches the glass and backing views, clears the associated object, and
+// removes the context from the registry.
+extern "C" void RemoveGlassEffectView(int viewId) {
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    GlassContext& ctx = it->second;
+
+    // Detach views and clear the associated object on the host
+    if (ctx.glassView) [ctx.glassView removeFromSuperview];
+    if (ctx.backgroundView) [ctx.backgroundView removeFromSuperview];
+    if (ctx.hostView) {
+        objc_setAssociatedObject(ctx.hostView, kGlassContextIdKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    }
+    g_registry.erase(it);
   });
 }
 
 // -----------------------------------------------------------------------------
-// Explicit Property Setters (Replacing Generic ResolveSetter)
+// Setters
 // -----------------------------------------------------------------------------
 
+// Sets the private _variant property that controls the glass style (e.g. 16=sidebar, 2=dock).
 extern "C" void SetGlassViewVariant(int viewId, int variant) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
 
-    // Check for private API selector: set_variant:
     SEL sel = sel_registerName("set_variant:");
     if ([glass respondsToSelector:sel]) {
       ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)variant);
-    } else {
-        // Try public camelCase (setVariant:) just in case
-        SEL selPublic = sel_registerName("setVariant:");
-        if ([glass respondsToSelector:selPublic]) {
-            ((void (*)(id, SEL, long long))objc_msgSend)(glass, selPublic, (long long)variant);
-        }
     }
   });
 }
 
+// Only applies to the NSVisualEffectView fallback path
 extern "C" void SetGlassViewMaterial(int viewId, int material) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
 
-    // Standard Public API for NSVisualEffectView
     if ([glass isKindOfClass:[NSVisualEffectView class]]) {
         [(NSVisualEffectView*)glass setMaterial:(NSVisualEffectMaterial)material];
     }
   });
 }
 
+// Sets blending mode: 0=BehindWindow (blur desktop), 1=WithinWindow (blur app content).
+extern "C" void SetGlassViewBlendingMode(int viewId, int mode) {
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
+
+    // NSGlassEffectView inherits from NSView, not NSVisualEffectView
+    SEL sel = sel_registerName("setBlendingMode:");
+    if ([glass respondsToSelector:sel]) {
+        ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)mode);
+    }
+  });
+}
+
+// Sets the private _scrimState property (overlay dimming layer).
 extern "C" void SetGlassViewScrim(int viewId, int scrim) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
 
-    // Check for private API selector: set_scrimState:
     SEL sel = sel_registerName("set_scrimState:");
     if ([glass respondsToSelector:sel]) {
       ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)scrim);
@@ -293,13 +278,13 @@ extern "C" void SetGlassViewScrim(int viewId, int scrim) {
   });
 }
 
+// Sets the private _subduedState property (reduces vibrancy/saturation).
 extern "C" void SetGlassViewSubdued(int viewId, int subdued) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
 
-    // Check for private API selector: set_subduedState:
     SEL sel = sel_registerName("set_subduedState:");
     if ([glass respondsToSelector:sel]) {
       ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)subdued);
@@ -307,16 +292,67 @@ extern "C" void SetGlassViewSubdued(int viewId, int subdued) {
   });
 }
 
-extern "C" void RemoveGlassEffectView(int viewId) {
+// Sets the private _contentLensing property (refraction intensity).
+extern "C" void SetGlassViewContentLensing(int viewId, int lensing) {
   RUN_ON_MAIN(^{
-    auto it = g_glassViews.find(viewId);
-    if (it == g_glassViews.end()) return;
-    NSView* glass = it->second;
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
 
-    // Cleanup
-    [glass removeFromSuperview];
-    g_glassViews.erase(it);
+    SEL sel = sel_registerName("set_contentLensing:");
+    if ([glass respondsToSelector:sel]) {
+      ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)lensing);
+    }
+  });
+}
+
+// Sets appearance: 0=Light, 1=Dark, 2=Auto. Uses public NSView.appearance API
+// for reliable control, plus the private _adaptiveAppearance property.
+extern "C" void SetGlassViewAdaptiveAppearance(int viewId, int appearance) {
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
+
+    // Use the public NSView.appearance API for reliable light/dark control
+    switch (appearance) {
+      case 0: // Light
+        glass.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        break;
+      case 1: // Dark
+        glass.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        break;
+      default: // Auto — inherit from parent
+        glass.appearance = nil;
+        break;
+    }
+
+    // Also set the private property (may affect glass-specific rendering)
+    int clamped = (appearance < 0) ? 0 : (appearance > 2) ? 2 : appearance;
+    SEL sel = sel_registerName("set_adaptiveAppearance:");
+    if ([glass respondsToSelector:sel]) {
+      ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)clamped);
+    }
+  });
+}
+
+// Sets interaction state: 0=Normal, 1=Hovered. Clamped to 0-1 because
+// values >= 2 trigger a Swift precondition crash in NSGlassEffectView.
+extern "C" void SetGlassViewInteractionState(int viewId, int state) {
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    NSView* glass = it->second.glassView;
+
+    // Clamp: values >= 2 crash (Swift precondition in NSGlassEffectView)
+    int clamped = (state < 0) ? 0 : (state > 1) ? 1 : state;
+
+    SEL sel = sel_registerName("set_interactionState:");
+    if ([glass respondsToSelector:sel]) {
+      ((void (*)(id, SEL, long long))objc_msgSend)(glass, sel, (long long)clamped);
+    }
   });
 }
 
 #endif // PLATFORM_OSX
+

@@ -10,6 +10,8 @@
 SettingsPage::SettingsPage(QWidget *parent) : QWidget(parent) {
     m_materials = {"Sidebar", "Sheet", "Hud", "WindowBackground", "Popover", "Menu", "FullscreenUI", "ControlCenter", "Widgets", "Inspector", "Titlebar", "Tooltip", "Frosted", "Clear Glass", "Chromatic"};
     m_materialIndex = 0;
+    m_appearances = {"Light", "Dark", "Auto"};
+    m_appearanceIndex = 2;
     
     setupUi();
     updateCodeSnippet();
@@ -147,15 +149,51 @@ void SettingsPage::setupUi() {
     opaqueCheck->setStyleSheet("QCheckBox { background:transparent; color: white; spacing: 10px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: none; rgba(255,255,255,0.2);  } QCheckBox::indicator:checked { background: #00E5FF; border: none; }");
     connect(opaqueCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
     propLayout->addWidget(opaqueCheck);
-    
+
+    propLayout->addSpacing(5);
+
+    QLabel* lblAppearance = new QLabel("Appearance:");
+    lblAppearance->setStyleSheet("background: transparent; border: none;");
+    propLayout->addWidget(lblAppearance);
+
+    QHBoxLayout *appearanceCarousel = new QHBoxLayout();
+    appearanceCarousel->setSpacing(5);
+
+    QPushButton *prevAppBtn = new QPushButton(u8"\u2039");
+    prevAppBtn->setFixedSize(30, 28);
+    prevAppBtn->setCursor(Qt::PointingHandCursor);
+    prevAppBtn->setFocusPolicy(Qt::NoFocus);
+    prevAppBtn->setStyleSheet("QPushButton { background: transparent; border-radius: 5px; color: rgba(255,255,255,0.8); font-size: 24px; border: none; } QPushButton:hover { background: rgba(255,255,255,0.1); color: white; }");
+    connect(prevAppBtn, &QPushButton::clicked, [this]() { cycleAppearance(-1); });
+
+    QPushButton *nextAppBtn = new QPushButton(u8"\u203A");
+    nextAppBtn->setFixedSize(30, 28);
+    nextAppBtn->setCursor(Qt::PointingHandCursor);
+    nextAppBtn->setFocusPolicy(Qt::NoFocus);
+    nextAppBtn->setStyleSheet("QPushButton { background: transparent; border-radius: 5px; color: rgba(255,255,255,0.8); font-size: 24px; border: none; } QPushButton:hover { background: rgba(255,255,255,0.1); color: white; }");
+    connect(nextAppBtn, &QPushButton::clicked, [this]() { cycleAppearance(1); });
+
+    appearanceLabel = new QLabel(m_appearances[m_appearanceIndex]);
+    appearanceLabel->setAlignment(Qt::AlignCenter);
+    appearanceLabel->setStyleSheet("background: rgba(255,255,255,0.05); border-radius: 5px; color: white; font-weight: bold; border: none;");
+    appearanceLabel->setFixedHeight(28);
+
+    appearanceCarousel->addWidget(prevAppBtn);
+    appearanceCarousel->addWidget(appearanceLabel, 1);
+    appearanceCarousel->addWidget(nextAppBtn);
+    propLayout->addLayout(appearanceCarousel);
+
+    propLayout->addSpacing(5);
+
+    hoveredCheck = new QCheckBox("Hovered State");
+    hoveredCheck->setStyleSheet("QCheckBox { background:transparent; color: white; spacing: 10px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: none; rgba(255,255,255,0.2);  } QCheckBox::indicator:checked { background: #00E5FF; border: none; }");
+    connect(hoveredCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
+    propLayout->addWidget(hoveredCheck);
+
     propLayout->addStretch();
     groupsLayout->addWidget(propGroup);
     
     mainLayout->addLayout(groupsLayout);
-
-    // ... Explorer ...
-    // QWidget* explorerGroup = createGroup("VARIANT EXPLORER");
-    // ... removed ...
 
     QWidget* codeGroup = createGroup("C++ CONFIGURATION");
     codeGroup->setFixedHeight(80); 
@@ -197,12 +235,23 @@ void SettingsPage::cycleMaterial(int delta) {
     emitChange();
 }
 
+void SettingsPage::cycleAppearance(int delta) {
+    m_appearanceIndex += delta;
+    if (m_appearanceIndex < 0) m_appearanceIndex = m_appearances.size() - 1;
+    if (m_appearanceIndex >= m_appearances.size()) m_appearanceIndex = 0;
+
+    appearanceLabel->setText(m_appearances[m_appearanceIndex]);
+    emitChange();
+}
+
 void SettingsPage::emitChange() {
     QtLiquidGlass::Options opts;
     opts.cornerRadius = radiusSlider->value();
     opts.tintColor = tintInput->text();
     opts.opaque = opaqueCheck->isChecked();
-    
+    opts.appearance = static_cast<QtLiquidGlass::AdaptiveAppearance>(m_appearanceIndex);
+    opts.interaction = hoveredCheck->isChecked() ? QtLiquidGlass::InteractionState::Hovered : QtLiquidGlass::InteractionState::Normal;
+
     QtLiquidGlass::Material mat = static_cast<QtLiquidGlass::Material>(m_materialIndex);
     
     emit glassSettingsChanged(opts, mat);
@@ -214,8 +263,9 @@ void SettingsPage::updateCodeSnippet() {
     QString tint = tintInput->text().isEmpty() ? "\"\"" : "\"" + tintInput->text() + "\"";
     QString radius = QString::number(radiusSlider->value(), 'f', 1);
     QString opaque = opaqueCheck->isChecked() ? "true" : "false";
+    QString appearance = m_appearances[m_appearanceIndex];
+    QString interaction = hoveredCheck->isChecked() ? "Hovered" : "Normal";
 
-    // Syntax Highlighting HTML
     QString html = QString(
         "<span style='color:#569CD6'>addGlassEffect</span>"
         "<span style='color:#D4D4D4'>(</span>"
@@ -230,8 +280,12 @@ void SettingsPage::updateCodeSnippet() {
         "<span style='color:#CE9178'>%3</span>"
         "<span style='color:#D4D4D4'>, </span>"
         "<span style='color:#569CD6'>%4</span>"
+        "<span style='color:#D4D4D4'>, </span>"
+        "<span style='color:#4EC9B0'>%5</span>"
+        "<span style='color:#D4D4D4'>, </span>"
+        "<span style='color:#4EC9B0'>%6</span>"
         "<span style='color:#D4D4D4'>});</span>"
-    ).arg(matName, radius, tint, opaque);
+    ).arg(matName, radius, tint, opaque, appearance, interaction);
 
     codeDisplay->setHtml(html);
 }
@@ -241,14 +295,18 @@ void SettingsPage::copyToClipboard() {
     QString tint = tintInput->text().isEmpty() ? "\"\"" : "\"" + tintInput->text() + "\"";
     QString radius = QString::number(radiusSlider->value(), 'f', 1);
     QString opaque = opaqueCheck->isChecked() ? "true" : "false";
-    
+    QString appearance = m_appearances[m_appearanceIndex];
+    QString interaction = hoveredCheck->isChecked() ? "Hovered" : "Normal";
+
     QString fullCode = QString(
         "QtLiquidGlass::Options opts;\n"
         "opts.cornerRadius = %1;\n"
         "opts.tintColor = %2;\n"
-        "opts.opaque = %3;\n\n"
-        "QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::%4, opts);"
-    ).arg(radius, tint, opaque, matName);
+        "opts.opaque = %3;\n"
+        "opts.appearance = QtLiquidGlass::AdaptiveAppearance::%4;\n"
+        "opts.interaction = QtLiquidGlass::InteractionState::%5;\n\n"
+        "QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::%6, opts);"
+    ).arg(radius, tint, opaque, appearance, interaction, matName);
     
     QClipboard *clipboard = QApplication::clipboard();
     clipboard->setText(fullCode);
