@@ -109,10 +109,12 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
 
 void configure(int id, const Options& opts) {
 #ifdef PLATFORM_OSX
+    bool hasTint = false;
     double r=0, g=0, b=0, a=0;
     if (!opts.tintColor.isEmpty()) {
         QColor c(opts.tintColor);
         if (c.isValid()) {
+            hasTint = true;
             r = c.redF();
             g = c.greenF();
             b = c.blueF();
@@ -120,7 +122,7 @@ void configure(int id, const Options& opts) {
         }
     }
     
-    ConfigureGlassView(id, opts.cornerRadius, r, g, b, a);
+    ConfigureGlassView(id, opts.cornerRadius, hasTint, r, g, b, a);
     SetGlassViewBlendingMode(id, static_cast<int>(opts.blendingMode));
     SetGlassViewAdaptiveAppearance(id, static_cast<int>(opts.appearance));
     SetGlassViewInteractionState(id, static_cast<int>(opts.interaction));

@@ -7,7 +7,7 @@
 
   **Native Liquid Glass effect for macOS Qt6 applications**
   
-   Instantiates AppKit’s private `NSGlassEffectView` directly through Objective-C runtime.
+   Instantiates AppKit’s `NSGlassEffectView` directly through Objective-C runtime, with private variant selectors for extended styles.
 
 
 </div>
@@ -16,7 +16,7 @@
 
 ## 🧩 Features
 
--  **Native Glass Effects** — Real `NSGlassEffectView` integration (Private API) with `NSVisualEffectView` fallback for older macOS.
+-  **Native Glass Effects** — Real `NSGlassEffectView` integration with private extended variants and `NSVisualEffectView` fallback for older macOS.
 -  **Qt Integration** — Works seamlessly with `QWidget` and `QMainWindow`.
 -  **15 Materials** — Sidebar, HUD, Popover, Frosted, ClearGlass, Chromatic, and more.
 -  **Appearance Control** — Force light/dark mode or follow the system automatically.
@@ -51,7 +51,7 @@ If you prefer to install the library system-wide or use it across multiple proje
 
 2.  **Use in your project:**
     ```cmake
-    find_package(QtLiquidGlass 0.2 REQUIRED)
+    find_package(QtLiquidGlass 0.2.1 REQUIRED)
     target_link_libraries(YourApp PRIVATE QtLiquidGlass::QtLiquidGlass)
     ```
 
@@ -66,6 +66,7 @@ If you prefer to install the library system-wide or use it across multiple proje
 
 ```cpp
 #include "QtLiquidGlass/QtLiquidGlass.h"
+#include <QApplication>
 #include <QMainWindow>
 
 int main(int argc, char *argv[]) {
@@ -142,6 +143,8 @@ The included example demonstrates how to switch materials and configure properti
 | `Material::Frosted` | Softest, strongest blur, bright diffusion |
 | `Material::ClearGlass` | Almost no blur, crisp transparency with light RGB refraction |
 | `Material::Chromatic` | Frosted look with chromatic aberration blur |
+
+> **Note**: AppKit publicly documents `NSGlassEffectView` with `Regular` and `Clear` styles. The additional material variants above use private `_variant` values discovered at runtime and may change across macOS releases.
 
 ## 🏗️ How It Works
 

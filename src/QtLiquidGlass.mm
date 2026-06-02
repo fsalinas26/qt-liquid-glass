@@ -58,6 +58,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
     bool isRoot = (win && [win contentView] == rootView);
 
     NSView *container = nil;
+    NSView *createdContainer = nil;
 
     if (isRoot) {
         // Root window: force transparency and inject into the frame
@@ -83,6 +84,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
             [newContainer addSubview:rootView];
             
             container = newContainer;
+            createdContainer = newContainer;
         }
     } else {
         // Child widget: inject inside its native view
@@ -100,7 +102,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
         backgroundView = [[NSBox alloc] initWithFrame:frameRect];
         backgroundView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         backgroundView.boxType = NSBoxCustom;
-        backgroundView.borderType = NSNoBorder;
+        backgroundView.borderWidth = 0.0;
         backgroundView.fillColor = [NSColor windowBackgroundColor];
         backgroundView.wantsLayer = YES;
     }
@@ -148,6 +150,11 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
 
     g_registry[id] = ctx;
     objc_setAssociatedObject(rootView, kGlassContextIdKey, @(id), OBJC_ASSOCIATION_RETAIN);
+
+    // Balance alloc/init ownership. The AppKit view hierarchy now owns these views.
+    if (glass) [glass release];
+    if (backgroundView) [backgroundView release];
+    if (createdContainer) [createdContainer release];
     
     resultId = id;
   });
@@ -158,7 +165,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
 // Sets corner radius (native setCornerRadius: or layer fallback) and tint color.
 // Also rounds the opaque backing layer and container (NSThemeFrame) to prevent
 // rectangular backgrounds from bleeding through transparent glass materials.
-extern "C" void ConfigureGlassView(int viewId, double cornerRadius, double r, double g, double b, double a) {
+extern "C" void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint, double r, double g, double b, double a) {
   RUN_ON_MAIN(^{
     auto it = g_registry.find(viewId);
     if (it == g_registry.end()) return;
@@ -174,12 +181,13 @@ extern "C" void ConfigureGlassView(int viewId, double cornerRadius, double r, do
             ctx.glassView.layer.masksToBounds = (cornerRadius > 0);
         }
 
-        // Tint: use native setTintColor: if available, otherwise layer bg
-        NSColor* c = [NSColor colorWithRed:r green:g blue:b alpha:a];
-        if (c && [ctx.glassView respondsToSelector:@selector(setTintColor:)]) {
+        // Tint: use native setTintColor: if available, otherwise layer bg.
+        // Empty tint means nil/no tint, not transparent black.
+        if ([ctx.glassView respondsToSelector:@selector(setTintColor:)]) {
+            NSColor* c = hasTint ? [NSColor colorWithRed:r green:g blue:b alpha:a] : nil;
             [(id)ctx.glassView setTintColor:c];
-        } else if (c) {
-            ctx.glassView.layer.backgroundColor = c.CGColor;
+        } else {
+            ctx.glassView.layer.backgroundColor = hasTint ? [NSColor colorWithRed:r green:g blue:b alpha:a].CGColor : nil;
         }
     }
 
@@ -355,4 +363,3 @@ extern "C" void SetGlassViewInteractionState(int viewId, int state) {
 }
 
 #endif // PLATFORM_OSX
-
