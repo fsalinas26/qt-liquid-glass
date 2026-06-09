@@ -2,7 +2,6 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <QMouseEvent>
 #include "FadeStack.h"
 #include "PlayerPage.h"
 #include "SettingsPage.h"
@@ -19,9 +18,6 @@ public:
 private slots:
     void toggleMiniMode(bool mini);
     void updateGlass(QtLiquidGlass::Options opts, QtLiquidGlass::Material mat);
-
-protected:
-    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     void setupUi();

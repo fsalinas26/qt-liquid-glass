@@ -33,6 +33,8 @@ private:
     QLineEdit *tintInput;
     QCheckBox *opaqueCheck;
     QCheckBox *hoveredCheck;
+    QCheckBox *fullSizeTitlebarCheck;
+    QCheckBox *backgroundDragCheck;
 
     QLabel *materialLabel;
     int m_materialIndex = 0;

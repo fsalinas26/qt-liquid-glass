@@ -60,6 +60,8 @@ void SettingsPage::setupUi() {
         return group;
     };
 
+    const QString checkStyle = "QCheckBox { background:transparent; color: white; spacing: 10px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: none; rgba(255,255,255,0.2);  } QCheckBox::indicator:checked { background: #00E5FF; border: none; }";
+
     QHBoxLayout *groupsLayout = new QHBoxLayout();
     groupsLayout->setSpacing(10);
 
@@ -146,7 +148,7 @@ void SettingsPage::setupUi() {
     propLayout->addSpacing(10);
     
     opaqueCheck = new QCheckBox("Opaque BG");
-    opaqueCheck->setStyleSheet("QCheckBox { background:transparent; color: white; spacing: 10px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: none; rgba(255,255,255,0.2);  } QCheckBox::indicator:checked { background: #00E5FF; border: none; }");
+    opaqueCheck->setStyleSheet(checkStyle);
     connect(opaqueCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
     propLayout->addWidget(opaqueCheck);
 
@@ -186,12 +188,30 @@ void SettingsPage::setupUi() {
     propLayout->addSpacing(5);
 
     hoveredCheck = new QCheckBox("Hovered State");
-    hoveredCheck->setStyleSheet("QCheckBox { background:transparent; color: white; spacing: 10px; } QCheckBox::indicator { width: 18px; height: 18px; border-radius: 4px; border: none; rgba(255,255,255,0.2);  } QCheckBox::indicator:checked { background: #00E5FF; border: none; }");
+    hoveredCheck->setStyleSheet(checkStyle);
     connect(hoveredCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
     propLayout->addWidget(hoveredCheck);
 
     propLayout->addStretch();
     groupsLayout->addWidget(propGroup);
+
+    QWidget* windowGroup = createGroup("WINDOW");
+    QVBoxLayout* windowLayout = qobject_cast<QVBoxLayout*>(windowGroup->layout());
+
+    fullSizeTitlebarCheck = new QCheckBox("Full-Size Titlebar");
+    fullSizeTitlebarCheck->setStyleSheet(checkStyle);
+    fullSizeTitlebarCheck->setChecked(true);
+    connect(fullSizeTitlebarCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
+    windowLayout->addWidget(fullSizeTitlebarCheck);
+
+    backgroundDragCheck = new QCheckBox("Background Drag");
+    backgroundDragCheck->setStyleSheet(checkStyle);
+    backgroundDragCheck->setChecked(true);
+    connect(backgroundDragCheck, &QCheckBox::toggled, this, &SettingsPage::emitChange);
+    windowLayout->addWidget(backgroundDragCheck);
+
+    windowLayout->addStretch();
+    groupsLayout->addWidget(windowGroup);
     
     mainLayout->addLayout(groupsLayout);
 
@@ -249,6 +269,12 @@ void SettingsPage::emitChange() {
     opts.cornerRadius = radiusSlider->value();
     opts.tintColor = tintInput->text();
     opts.opaque = opaqueCheck->isChecked();
+    opts.titlebarStyle = fullSizeTitlebarCheck->isChecked()
+        ? QtLiquidGlass::TitlebarStyle::TransparentFullSize
+        : QtLiquidGlass::TitlebarStyle::Preserve;
+    opts.dragBehavior = backgroundDragCheck->isChecked()
+        ? QtLiquidGlass::WindowDragBehavior::MovableByWindowBackground
+        : QtLiquidGlass::WindowDragBehavior::Preserve;
     opts.appearance = static_cast<QtLiquidGlass::AdaptiveAppearance>(m_appearanceIndex);
     opts.interaction = hoveredCheck->isChecked() ? QtLiquidGlass::InteractionState::Hovered : QtLiquidGlass::InteractionState::Normal;
 
@@ -263,6 +289,8 @@ void SettingsPage::updateCodeSnippet() {
     QString tint = tintInput->text().isEmpty() ? "\"\"" : "\"" + tintInput->text() + "\"";
     QString radius = QString::number(radiusSlider->value(), 'f', 1);
     QString opaque = opaqueCheck->isChecked() ? "true" : "false";
+    QString titlebar = fullSizeTitlebarCheck->isChecked() ? "TransparentFullSize" : "Preserve";
+    QString drag = backgroundDragCheck->isChecked() ? "MovableByWindowBackground" : "Preserve";
     QString appearance = m_appearances[m_appearanceIndex];
     QString interaction = hoveredCheck->isChecked() ? "Hovered" : "Normal";
 
@@ -284,8 +312,12 @@ void SettingsPage::updateCodeSnippet() {
         "<span style='color:#4EC9B0'>%5</span>"
         "<span style='color:#D4D4D4'>, </span>"
         "<span style='color:#4EC9B0'>%6</span>"
+        "<span style='color:#D4D4D4'>, </span>"
+        "<span style='color:#4EC9B0'>%7</span>"
+        "<span style='color:#D4D4D4'>, </span>"
+        "<span style='color:#4EC9B0'>%8</span>"
         "<span style='color:#D4D4D4'>});</span>"
-    ).arg(matName, radius, tint, opaque, appearance, interaction);
+    ).arg(matName, radius, tint, opaque, appearance, interaction, titlebar, drag);
 
     codeDisplay->setHtml(html);
 }
@@ -295,6 +327,8 @@ void SettingsPage::copyToClipboard() {
     QString tint = tintInput->text().isEmpty() ? "\"\"" : "\"" + tintInput->text() + "\"";
     QString radius = QString::number(radiusSlider->value(), 'f', 1);
     QString opaque = opaqueCheck->isChecked() ? "true" : "false";
+    QString titlebar = fullSizeTitlebarCheck->isChecked() ? "TransparentFullSize" : "Preserve";
+    QString drag = backgroundDragCheck->isChecked() ? "MovableByWindowBackground" : "Preserve";
     QString appearance = m_appearances[m_appearanceIndex];
     QString interaction = hoveredCheck->isChecked() ? "Hovered" : "Normal";
 
@@ -303,10 +337,12 @@ void SettingsPage::copyToClipboard() {
         "opts.cornerRadius = %1;\n"
         "opts.tintColor = %2;\n"
         "opts.opaque = %3;\n"
-        "opts.appearance = QtLiquidGlass::AdaptiveAppearance::%4;\n"
-        "opts.interaction = QtLiquidGlass::InteractionState::%5;\n\n"
-        "QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::%6, opts);"
-    ).arg(radius, tint, opaque, appearance, interaction, matName);
+        "opts.titlebarStyle = QtLiquidGlass::TitlebarStyle::%4;\n"
+        "opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::%5;\n"
+        "opts.appearance = QtLiquidGlass::AdaptiveAppearance::%6;\n"
+        "opts.interaction = QtLiquidGlass::InteractionState::%7;\n\n"
+        "QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::%8, opts);"
+    ).arg(radius, tint, opaque, titlebar, drag, appearance, interaction, matName);
     
     QClipboard *clipboard = QApplication::clipboard();
     clipboard->setText(fullCode);

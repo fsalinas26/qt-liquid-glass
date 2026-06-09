@@ -2,7 +2,6 @@
 #include <QVBoxLayout>
 #include <QPropertyAnimation>
 #include <QDebug>
-#include <QWindow>
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setWindowFlags(Qt::Window);
@@ -127,15 +126,4 @@ void MainWindow::animateResize(int w, int h) {
     anim->setEndValue(QSize(w, h));
     anim->setEasingCurve(QEasingCurve::OutExpo);
     anim->start(QAbstractAnimation::DeleteWhenStopped);
-}
-
-// Window Dragging Logic (drag from anywhere in the window)
-
-void MainWindow::mousePressEvent(QMouseEvent *event) {
-    if (event->button() == Qt::LeftButton) {
-        if (windowHandle()) {
-            windowHandle()->startSystemMove();
-        }
-        event->accept();
-    }
 }
