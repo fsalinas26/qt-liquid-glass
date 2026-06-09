@@ -16,6 +16,15 @@ struct GlassContext {
     NSBox* backgroundView;   // The optional opaque backing layer
     NSView* hostView;        // The Qt Native View we attached to
     NSView* containerView;   // The parent we injected into (NSThemeFrame for root windows)
+    NSWindow* window;        // Root window whose chrome/transparency we may change
+    BOOL originalFullSizeContentView;
+    BOOL originalTitlebarAppearsTransparent;
+    BOOL originalMovableByWindowBackground;
+    BOOL originalOpaque;
+    NSColor* originalBackgroundColor;
+    BOOL managesTitlebarStyle;
+    BOOL managesMovableByWindowBackground;
+    BOOL appliedMovableByWindowBackground;
     int id;
 };
 
@@ -39,7 +48,10 @@ static const void *kGlassContextIdKey = &kGlassContextIdKey;
 // Injects an NSGlassEffectView (or NSVisualEffectView fallback) behind the
 // given native view. Handles root windows (sibling injection into NSThemeFrame),
 // frameless windows (content swap), and child widgets. Returns a registry ID.
-extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
+extern "C" int AddGlassEffectView(void* nativeViewPtr,
+                                  bool opaque,
+                                  int titlebarStyle,
+                                  int dragBehavior) {
   if (!nativeViewPtr) return -1;
 
   __block int resultId = -1;
@@ -59,13 +71,45 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
 
     NSView *container = nil;
     NSView *createdContainer = nil;
+    BOOL originalFullSizeContentView = NO;
+    BOOL originalTitlebarAppearsTransparent = NO;
+    BOOL originalMovableByWindowBackground = NO;
+    BOOL originalOpaque = NO;
+    NSColor *originalBackgroundColor = nil;
+    BOOL managesTitlebarStyle = NO;
+    BOOL managesMovableByWindowBackground = NO;
+    BOOL appliedMovableByWindowBackground = NO;
 
     if (isRoot) {
-        // Root window: force transparency and inject into the frame
+        originalFullSizeContentView = ((win.styleMask & NSWindowStyleMaskFullSizeContentView) != 0);
+        originalTitlebarAppearsTransparent = win.titlebarAppearsTransparent;
+        originalMovableByWindowBackground = win.movableByWindowBackground;
+        originalOpaque = win.opaque;
+        originalBackgroundColor = [[win backgroundColor] retain];
+
+        // Root window: force transparency for glass compositing.
         [win setOpaque:NO];
         [win setBackgroundColor:[NSColor clearColor]];
-        win.styleMask |= NSWindowStyleMaskFullSizeContentView;
-        win.titlebarAppearsTransparent = YES;
+
+        if (titlebarStyle == 1) {
+            win.styleMask |= NSWindowStyleMaskFullSizeContentView;
+            win.titlebarAppearsTransparent = YES;
+            managesTitlebarStyle = YES;
+        }
+
+        if (dragBehavior == 0 && titlebarStyle == 1) {
+            win.movableByWindowBackground = YES;
+            managesMovableByWindowBackground = YES;
+            appliedMovableByWindowBackground = YES;
+        } else if (dragBehavior == 2) {
+            win.movableByWindowBackground = YES;
+            managesMovableByWindowBackground = YES;
+            appliedMovableByWindowBackground = YES;
+        } else if (dragBehavior == 3) {
+            win.movableByWindowBackground = NO;
+            managesMovableByWindowBackground = YES;
+            appliedMovableByWindowBackground = NO;
+        }
         
         // Inject into NSThemeFrame's content slot, or swap if needed
         if ([rootView superview]) {
@@ -147,6 +191,15 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr, bool opaque) {
     ctx.backgroundView = backgroundView;
     ctx.hostView = rootView;
     ctx.containerView = container;
+    ctx.window = isRoot ? win : nil;
+    ctx.originalFullSizeContentView = isRoot ? originalFullSizeContentView : NO;
+    ctx.originalTitlebarAppearsTransparent = isRoot ? originalTitlebarAppearsTransparent : NO;
+    ctx.originalMovableByWindowBackground = isRoot ? originalMovableByWindowBackground : NO;
+    ctx.originalOpaque = isRoot ? originalOpaque : NO;
+    ctx.originalBackgroundColor = isRoot ? originalBackgroundColor : nil;
+    ctx.managesTitlebarStyle = isRoot ? managesTitlebarStyle : NO;
+    ctx.managesMovableByWindowBackground = isRoot ? managesMovableByWindowBackground : NO;
+    ctx.appliedMovableByWindowBackground = isRoot ? appliedMovableByWindowBackground : NO;
 
     g_registry[id] = ctx;
     objc_setAssociatedObject(rootView, kGlassContextIdKey, @(id), OBJC_ASSOCIATION_RETAIN);
@@ -219,9 +272,32 @@ extern "C" void RemoveGlassEffectView(int viewId) {
     // Detach views and clear the associated object on the host
     if (ctx.glassView) [ctx.glassView removeFromSuperview];
     if (ctx.backgroundView) [ctx.backgroundView removeFromSuperview];
+    if (ctx.window) {
+        if (ctx.managesTitlebarStyle) {
+            NSWindowStyleMask styleMask = ctx.window.styleMask;
+            if (ctx.originalFullSizeContentView) {
+                styleMask |= NSWindowStyleMaskFullSizeContentView;
+            } else {
+                styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+            }
+            ctx.window.styleMask = styleMask;
+            if (ctx.window.titlebarAppearsTransparent) {
+                ctx.window.titlebarAppearsTransparent = ctx.originalTitlebarAppearsTransparent;
+            }
+        }
+        if (ctx.managesMovableByWindowBackground &&
+            ctx.window.movableByWindowBackground == ctx.appliedMovableByWindowBackground) {
+            ctx.window.movableByWindowBackground = ctx.originalMovableByWindowBackground;
+        }
+        [ctx.window setOpaque:ctx.originalOpaque];
+        if (ctx.originalBackgroundColor) {
+            [ctx.window setBackgroundColor:ctx.originalBackgroundColor];
+        }
+    }
     if (ctx.hostView) {
         objc_setAssociatedObject(ctx.hostView, kGlassContextIdKey, nil, OBJC_ASSOCIATION_ASSIGN);
     }
+    if (ctx.originalBackgroundColor) [ctx.originalBackgroundColor release];
     g_registry.erase(it);
   });
 }

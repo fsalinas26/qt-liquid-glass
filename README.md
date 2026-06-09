@@ -21,7 +21,7 @@
 -  **15 Materials** — Sidebar, HUD, Popover, Frosted, ClearGlass, Chromatic, and more.
 -  **Appearance Control** — Force light/dark mode or follow the system automatically.
 -  **Interaction States** — Normal and hovered states for interactive glass surfaces.
--  **Frameless Ready** — Handles standard windows and frameless windows (`Qt::FramelessWindowHint`).
+-  **Standard and Frameless Windows** — Supports standard Qt windows and includes a best-effort native wrapping path for frameless windows (`Qt::FramelessWindowHint`).
 
 ## 🚀 Installation
 
@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-> **Note**: The library automatically sets `WA_TranslucentBackground` and configures the `NSWindow` for transparency. You don't need to do this manually.
+> **Note**: By default, the library sets `WA_TranslucentBackground`, makes the `NSWindow` transparent, and uses a transparent full-size titlebar so glass can extend behind the title area. In this default mode, AppKit background dragging is enabled automatically to keep the seamless titlebar interactive.
 
 ## 🎛️ Demo Application
 
@@ -120,9 +120,30 @@ The included example demonstrates how to switch materials and configure properti
 | `cornerRadius` | `double` | `0.0` | Corner radius of the glass effect. |
 | `tintColor` | `QString` | `""` | Tint overlay in `#RRGGBB` or `#AARRGGBB` format. Empty = no tint. |
 | `opaque` | `bool` | `false` | Adds a solid backing layer behind the glass. |
+| `titlebarStyle` | `TitlebarStyle` | `TransparentFullSize` | `TransparentFullSize` keeps the existing seamless-titlebar behavior; `Preserve` avoids changing AppKit titlebar flags. |
+| `dragBehavior` | `WindowDragBehavior` | `Auto` | `Auto` enables AppKit background dragging with `TransparentFullSize`; `Preserve` leaves native drag policy unchanged; `MovableByWindowBackground` enables it; `NotMovableByWindowBackground` disables it. |
 | `blendingMode` | `BlendingMode` | `BehindWindow` | `BehindWindow` blurs desktop content; `WithinWindow` blurs app content. |
 | `appearance` | `AdaptiveAppearance` | `Auto` | `Light`, `Dark`, or `Auto` (follows system). |
 | `interaction` | `InteractionState` | `Normal` | `Normal` or `Hovered` (elevated highlight state). |
+
+If the transparent full-size titlebar interferes with native title dragging or title rendering, preserve the AppKit titlebar behavior:
+
+```cpp
+QtLiquidGlass::Options opts;
+opts.titlebarStyle = QtLiquidGlass::TitlebarStyle::Preserve;
+```
+
+For simple frameless or background-draggable windows, you can opt into AppKit background dragging:
+
+```cpp
+opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::MovableByWindowBackground;
+```
+
+To keep the previous native drag policy even with a transparent full-size titlebar:
+
+```cpp
+opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
+```
 
 ### Materials
 
@@ -148,7 +169,7 @@ The included example demonstrates how to switch materials and configure properti
 
 ## 🏗️ How It Works
 
-Qt-liquid-glass uses a smart injection strategy to place the native glass layer correctly behind Qt's rendering surface, regardless of whether you use a standard title bar or a frameless window.
+Qt-liquid-glass uses a native injection strategy to place the glass layer behind Qt's rendering surface for standard windows, child widgets, and best-effort frameless windows.
 
 <div align="center">
   <img src="docs/images/diagram.png" width="700">
@@ -157,7 +178,7 @@ Qt-liquid-glass uses a smart injection strategy to place the native glass layer 
 1.  **Native Backend**: Uses Objective-C++ to inject a native `NSView` into the window hierarchy.
 2.  **Smart Injection**:
     *   **Standard Windows**: Injects the glass view as a *sibling* behind the Qt root view in the `NSThemeFrame`.
-    *   **Frameless Windows**: Performs a "Content Swap" to wrap the Qt view in a container, ensuring the glass sits strictly behind the Qt rendering layer.
+    *   **Frameless Windows**: Uses a best-effort native wrapper around the Qt root view so the glass can sit behind the Qt rendering layer.
     *   **Child Widgets**: Injects the glass view directly inside the widget's native view, behind its children.
     *   **Duplicate Detection**: Uses Objective-C associated objects to automatically remove any existing glass before re-adding.
 3.  **Fallback**: On macOS versions without `NSGlassEffectView`, falls back to `NSVisualEffectView` with mapped material values.

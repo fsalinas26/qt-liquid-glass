@@ -40,10 +40,24 @@ enum class InteractionState {
     Hovered = 1
 };
 
+enum class TitlebarStyle {
+    Preserve = 0,
+    TransparentFullSize = 1
+};
+
+enum class WindowDragBehavior {
+    Auto = 0,
+    Preserve = 1,
+    MovableByWindowBackground = 2,
+    NotMovableByWindowBackground = 3
+};
+
 struct Options {
     double cornerRadius = 0.0;
     QString tintColor = "";    // "#RRGGBB" or "#AARRGGBB"
     bool opaque = false;
+    TitlebarStyle titlebarStyle = TitlebarStyle::TransparentFullSize;
+    WindowDragBehavior dragBehavior = WindowDragBehavior::Auto;
     BlendingMode blendingMode = BlendingMode::BehindWindow;
     AdaptiveAppearance appearance = AdaptiveAppearance::Auto;
     InteractionState interaction = InteractionState::Normal;
@@ -66,4 +80,3 @@ void remove(int id);
 } // namespace QtLiquidGlass
 
 #endif // QTLIQUIDGLASS_H
-

@@ -22,7 +22,10 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
     WId wid = widget->winId();
     void* nativeViewPtr = reinterpret_cast<void*>(wid);
     
-    int id = AddGlassEffectView(nativeViewPtr, opts.opaque);
+    int id = AddGlassEffectView(nativeViewPtr,
+                                opts.opaque,
+                                static_cast<int>(opts.titlebarStyle),
+                                static_cast<int>(opts.dragBehavior));
     
     if (id >= 0) {
         long long variantVal = 0;  // NSGlassEffectView private variant

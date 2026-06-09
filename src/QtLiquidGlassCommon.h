@@ -12,7 +12,10 @@
     // Forward declarations for internal functions used by the backend
     extern "C" {
         // nativeViewPtr is a void* (cast from NSView*)
-        int AddGlassEffectView(void* nativeViewPtr, bool opaque);
+        int AddGlassEffectView(void* nativeViewPtr,
+                               bool opaque,
+                               int titlebarStyle,
+                               int dragBehavior);
         
         // Configure with raw color values (0.0 - 1.0) to avoid string parsing in ObjC
         void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint, double r, double g, double b, double a);
