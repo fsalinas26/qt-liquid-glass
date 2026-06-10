@@ -51,7 +51,7 @@ If you prefer to install the library system-wide or use it across multiple proje
 
 2.  **Use in your project:**
     ```cmake
-    find_package(QtLiquidGlass 0.2.1 REQUIRED)
+    find_package(QtLiquidGlass 0.3.0 REQUIRED)
     target_link_libraries(YourApp PRIVATE QtLiquidGlass::QtLiquidGlass)
     ```
 
