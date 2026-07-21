@@ -438,4 +438,110 @@ extern "C" void SetGlassViewInteractionState(int viewId, int state) {
   });
 }
 
+// Converts QWidget-local path elements (Y-down) into the NSGlassEffectView's
+// local coordinate system (Y-up). Cubic curves are represented by one type-2
+// element followed by two type-3 data elements.
+static CGPathRef CreateGlassPath(const GlassPathElement* elements,
+                                 int elementCount,
+                                 NSRect bounds) {
+  CGMutablePathRef qtPath = CGPathCreateMutable();
+
+  for (int i = 0; i < elementCount; ++i) {
+    const GlassPathElement& element = elements[i];
+    switch (element.type) {
+      case 0:
+        CGPathMoveToPoint(qtPath, nullptr, element.x, element.y);
+        break;
+      case 1:
+        CGPathAddLineToPoint(qtPath, nullptr, element.x, element.y);
+        break;
+      case 2:
+        if (i + 2 < elementCount && elements[i + 1].type == 3 && elements[i + 2].type == 3) {
+          const GlassPathElement& control2 = elements[i + 1];
+          const GlassPathElement& end = elements[i + 2];
+          CGPathAddCurveToPoint(qtPath, nullptr,
+                                element.x, element.y,
+                                control2.x, control2.y,
+                                end.x, end.y);
+          i += 2;
+        }
+        break;
+      case 3:
+        // Consumed with the preceding CurveToElement.
+        break;
+    }
+  }
+
+  CGAffineTransform flip = CGAffineTransformMake(1.0, 0.0, 0.0, -1.0,
+                                                  NSMinX(bounds),
+                                                  NSMinY(bounds) + NSMaxY(bounds));
+  CGPathRef glassPath = CGPathCreateCopyByTransformingPath(qtPath, &flip);
+  CGPathRelease(qtPath);
+  return glassPath;
+}
+
+extern "C" bool GlassViewSupportsCustomShapes(int viewId) {
+  __block bool supported = false;
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+    supported = [it->second.glassView respondsToSelector:sel_registerName("_setPath:")];
+  });
+  return supported;
+}
+
+extern "C" bool SetGlassViewShape(int viewId,
+                                  const GlassPathElement* elements,
+                                  int elementCount) {
+  if (!elements || elementCount <= 0) return false;
+
+  __block bool applied = false;
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+
+    NSView* glass = it->second.glassView;
+    SEL selector = sel_registerName("_setPath:");
+    if (![glass respondsToSelector:selector]) return;
+
+    CGPathRef path = CreateGlassPath(elements, elementCount, glass.bounds);
+    ((void (*)(id, SEL, CGPathRef))objc_msgSend)(glass, selector, path);
+    CGPathRelease(path);
+    applied = true;
+  });
+  return applied;
+}
+
+extern "C" bool ClearGlassViewShape(int viewId) {
+  __block bool cleared = false;
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+
+    NSView* glass = it->second.glassView;
+    SEL selector = sel_registerName("_setPath:");
+    if (![glass respondsToSelector:selector]) return;
+
+    ((void (*)(id, SEL, CGPathRef))objc_msgSend)(glass, selector, nullptr);
+    cleared = true;
+  });
+  return cleared;
+}
+
+extern "C" bool SetGlassViewClipsToBounds(int viewId, bool enabled) {
+  __block bool applied = false;
+  RUN_ON_MAIN(^{
+    auto it = g_registry.find(viewId);
+    if (it == g_registry.end()) return;
+
+    NSView* glass = it->second.glassView;
+    SEL selector = sel_registerName("setClipsToBounds:");
+    if (![glass respondsToSelector:selector]) return;
+
+    ((void (*)(id, SEL, BOOL))objc_msgSend)(glass, selector, enabled ? YES : NO);
+    applied = true;
+  });
+  return applied;
+}
+
 #endif // PLATFORM_OSX

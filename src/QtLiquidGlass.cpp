@@ -4,6 +4,8 @@
 #include <QWidget>
 #include <QWindow>
 #include <QColor>
+#include <QPainterPath>
+#include <vector>
 
 namespace QtLiquidGlass {
 
@@ -168,5 +170,62 @@ void remove(int id) {
     Q_UNUSED(id);
 #endif
 }
+
+namespace Experimental {
+
+bool supportsCustomShapes(int id) {
+#ifdef PLATFORM_OSX
+    return GlassViewSupportsCustomShapes(id);
+#else
+    Q_UNUSED(id);
+    return false;
+#endif
+}
+
+bool setShape(int id, const QPainterPath& path) {
+#ifdef PLATFORM_OSX
+    if (path.isEmpty()) return ClearGlassViewShape(id);
+
+    std::vector<GlassPathElement> elements;
+    elements.reserve(static_cast<std::size_t>(path.elementCount()));
+    for (int i = 0; i < path.elementCount(); ++i) {
+        const QPainterPath::Element element = path.elementAt(i);
+        int type = 3;
+        switch (element.type) {
+            case QPainterPath::MoveToElement: type = 0; break;
+            case QPainterPath::LineToElement: type = 1; break;
+            case QPainterPath::CurveToElement: type = 2; break;
+            case QPainterPath::CurveToDataElement: type = 3; break;
+        }
+        elements.push_back({type, element.x, element.y});
+    }
+    return SetGlassViewShape(id, elements.data(), static_cast<int>(elements.size()));
+#else
+    Q_UNUSED(id);
+    Q_UNUSED(path);
+    return false;
+#endif
+}
+
+bool clearShape(int id) {
+#ifdef PLATFORM_OSX
+    return ClearGlassViewShape(id);
+#else
+    Q_UNUSED(id);
+    return false;
+#endif
+}
+
+bool setClipsToBounds(int id, bool enabled) {
+#ifdef PLATFORM_OSX
+    return SetGlassViewClipsToBounds(id, enabled);
+#else
+    Q_UNUSED(id);
+    Q_UNUSED(enabled);
+    return false;
+#endif
+}
+
+} // namespace Experimental
 
 } // namespace QtLiquidGlass

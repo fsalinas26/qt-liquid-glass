@@ -10,6 +10,12 @@
     // is included by QtLiquidGlass.cpp which is a standard C++ file.
     
     // Forward declarations for internal functions used by the backend
+    struct GlassPathElement {
+        int type; // 0=move, 1=line, 2=cubic control 1, 3=cubic data
+        double x;
+        double y;
+    };
+
     extern "C" {
         // nativeViewPtr is a void* (cast from NSView*)
         int AddGlassEffectView(void* nativeViewPtr,
@@ -29,6 +35,11 @@
         void SetGlassViewContentLensing(int viewId, int lensing);
         void SetGlassViewAdaptiveAppearance(int viewId, int appearance); // 0=light,1=dark,2=auto
         void SetGlassViewInteractionState(int viewId, int state);       // 0=normal,1=hovered
+
+        bool GlassViewSupportsCustomShapes(int viewId);
+        bool SetGlassViewShape(int viewId, const GlassPathElement* elements, int elementCount);
+        bool ClearGlassViewShape(int viewId);
+        bool SetGlassViewClipsToBounds(int viewId, bool enabled);
 
         void RemoveGlassEffectView(int viewId);
     }

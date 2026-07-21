@@ -112,6 +112,10 @@ The included example demonstrates how to switch materials and configure properti
 | `configure(id, options)` | Updates all properties (radius, tint, appearance, etc.) for an existing effect. |
 | `setIntProperty(id, key, value)` | Sets a low-level property by name. Keys: `variant`, `material`, `scrimState`, `subduedState`, `contentLensing`, `appearance`, `interaction`, `blendingMode`. |
 | `remove(id)` | Removes the effect and cleans up native views. |
+| `Experimental::supportsCustomShapes(id)` | Reports whether the active native backend supports arbitrary glass paths. |
+| `Experimental::setShape(id, path)` | Applies a QWidget-local `QPainterPath` to the glass surface. |
+| `Experimental::clearShape(id)` | Restores the default rectangular glass surface. |
+| `Experimental::setClipsToBounds(id, enabled)` | Controls native clipping for the glass surface. |
 
 ### Options
 
@@ -166,6 +170,29 @@ opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 | `Material::Chromatic` | Frosted look with chromatic aberration blur |
 
 > **Note**: AppKit publicly documents `NSGlassEffectView` with `Regular` and `Clear` styles. The additional material variants above use private `_variant` values discovered at runtime and may change across macOS releases.
+
+### Experimental custom shapes
+
+On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector.
+
+```cpp
+#include <QPainterPath>
+
+QPainterPath pill;
+pill.addRoundedRect(QRectF(0, 0, 240, 64), 32, 32);
+
+if (QtLiquidGlass::Experimental::supportsCustomShapes(id)) {
+    QtLiquidGlass::Experimental::setShape(id, pill);
+    QtLiquidGlass::Experimental::setClipsToBounds(id, true);
+}
+
+// Restore the default rectangular glass surface.
+QtLiquidGlass::Experimental::clearShape(id);
+```
+
+Paths use QWidget-local coordinates: origin at the top-left with Y increasing downward. The library converts them to AppKit coordinates while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` on the `QPainterPath` for animated translation, scaling, rotation, skewing, or morphing.
+
+Custom shapes are currently unavailable on the `NSVisualEffectView` fallback. All experimental shape functions return `false` when the effect ID is invalid or the runtime selector is unsupported.
 
 ## 🏗️ How It Works
 

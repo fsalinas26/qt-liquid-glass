@@ -4,6 +4,8 @@
 #include <QWidget>
 #include <QString>
 
+class QPainterPath;
+
 namespace QtLiquidGlass {
 
 enum class Material {
@@ -76,6 +78,25 @@ void setIntProperty(int id, const QString& key, long long value);
 
 // Remove and cleanup
 void remove(int id);
+
+// Experimental APIs backed by runtime-discovered AppKit behavior. These
+// operations may be unavailable on future macOS versions; callers should use
+// supportsCustomShapes() before enabling shape-specific UI.
+namespace Experimental {
+
+bool supportsCustomShapes(int id);
+
+// Applies a QWidget-local path to the native glass surface. Qt's Y-down
+// coordinates are converted to AppKit's Y-up coordinate system.
+bool setShape(int id, const QPainterPath& path);
+
+// Restores the native glass view's default rectangular shape.
+bool clearShape(int id);
+
+// Controls whether the glass view clips embedded content to its bounds.
+bool setClipsToBounds(int id, bool enabled);
+
+} // namespace Experimental
 
 } // namespace QtLiquidGlass
 

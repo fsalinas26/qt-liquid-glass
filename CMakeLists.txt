@@ -74,5 +74,9 @@ install(FILES
 
 # Only build examples if this is the top-level project
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    include(CTest)
+    if(BUILD_TESTING AND APPLE)
+        add_subdirectory(tests)
+    endif()
     add_subdirectory(examples/GlassDemo)
 endif()
