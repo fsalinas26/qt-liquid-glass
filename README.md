@@ -21,6 +21,8 @@
 -  **15 Materials** — Sidebar, HUD, Popover, Frosted, ClearGlass, Chromatic, and more.
 -  **Appearance Control** — Force light/dark mode or follow the system automatically.
 -  **Interaction States** — Normal and hovered states for interactive glass surfaces.
+-  **Custom Shapes** — Experimental `QPainterPath` geometry with `QTransform` support on compatible runtimes.
+-  **Safe Cleanup** — Effects are invalidated when their Qt or native host is destroyed, and explicit removal restores captured native state.
 -  **Standard and Frameless Windows** — Supports standard Qt windows and includes a best-effort native wrapping path for frameless windows (`Qt::FramelessWindowHint`).
 
 ## 🚀 Installation
@@ -51,7 +53,7 @@ If you prefer to install the library system-wide or use it across multiple proje
 
 2.  **Use in your project:**
     ```cmake
-    find_package(QtLiquidGlass 0.3.0 REQUIRED)
+    find_package(QtLiquidGlass 0.4.0 REQUIRED)
     target_link_libraries(YourApp PRIVATE QtLiquidGlass::QtLiquidGlass)
     ```
 
@@ -109,7 +111,7 @@ The included example demonstrates how to switch materials and configure properti
 | Method | Description |
 |--------|-------------|
 | `addGlassEffect(widget, material, options)` | Applies the glass effect behind the widget. Returns an `int` ID. |
-| `configure(id, options)` | Updates all properties (radius, tint, appearance, etc.) for an existing effect. |
+| `configure(id, options)` | Updates the existing effect's options without replacing its native view. |
 | `setIntProperty(id, key, value)` | Sets a low-level property by name. Keys: `variant`, `material`, `scrimState`, `subduedState`, `contentLensing`, `appearance`, `interaction`, `blendingMode`. |
 | `remove(id)` | Removes the effect and cleans up native views. |
 | `Experimental::supportsCustomShapes(id)` | Reports whether the active native backend supports arbitrary glass paths. |
@@ -126,7 +128,7 @@ The included example demonstrates how to switch materials and configure properti
 | `opaque` | `bool` | `false` | Adds a solid backing layer behind the glass. |
 | `titlebarStyle` | `TitlebarStyle` | `TransparentFullSize` | `TransparentFullSize` keeps the existing seamless-titlebar behavior; `Preserve` avoids changing AppKit titlebar flags. |
 | `dragBehavior` | `WindowDragBehavior` | `Auto` | `Auto` enables AppKit background dragging with `TransparentFullSize`; `Preserve` leaves native drag policy unchanged; `MovableByWindowBackground` enables it; `NotMovableByWindowBackground` disables it. |
-| `blendingMode` | `BlendingMode` | `BehindWindow` | `BehindWindow` blurs desktop content; `WithinWindow` blurs app content. |
+| `blendingMode` | `BlendingMode` | `BehindWindow` | Selects the blending mode on the `NSVisualEffectView` fallback. The tested `NSGlassEffectView` runtime does not implement this property. |
 | `appearance` | `AdaptiveAppearance` | `Auto` | `Light`, `Dark`, or `Auto` (follows system). |
 | `interaction` | `InteractionState` | `Normal` | `Normal` or `Hovered` (elevated highlight state). |
 
@@ -148,6 +150,14 @@ To keep the previous native drag policy even with a transparent full-size titleb
 ```cpp
 opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 ```
+
+`configure()` updates every field in `Options`. Material is passed separately to `addGlassEffect()` and still requires replacing the effect.
+
+### Lifetime and thread requirements
+
+Call QtLiquidGlass from Qt's GUI thread. Calling `remove(id)` detaches the native effect and restores the window and container state captured when it was added. Destroying the host `QWidget` or native view also invalidates the effect automatically. Operations using a removed or otherwise stale ID are safe no-ops; experimental operations return `false`.
+
+Explicit removal remains useful when an application wants to stop the effect before destroying its host. It is safe to call `remove()` more than once for the same ID.
 
 ### Materials
 
@@ -177,12 +187,16 @@ On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainte
 
 ```cpp
 #include <QPainterPath>
+#include <QTransform>
 
 QPainterPath pill;
 pill.addRoundedRect(QRectF(0, 0, 240, 64), 32, 32);
 
 if (QtLiquidGlass::Experimental::supportsCustomShapes(id)) {
-    QtLiquidGlass::Experimental::setShape(id, pill);
+    QTransform transform;
+    transform.translate(12.0, 8.0);
+    transform.rotate(4.0);
+    QtLiquidGlass::Experimental::setShape(id, transform.map(pill));
     QtLiquidGlass::Experimental::setClipsToBounds(id, true);
 }
 
@@ -192,7 +206,9 @@ QtLiquidGlass::Experimental::clearShape(id);
 
 Paths use QWidget-local coordinates: origin at the top-left with Y increasing downward. The library converts them to AppKit coordinates while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` on the `QPainterPath` for animated translation, scaling, rotation, skewing, or morphing.
 
-Custom shapes are currently unavailable on the `NSVisualEffectView` fallback. All experimental shape functions return `false` when the effect ID is invalid or the runtime selector is unsupported.
+Custom paths are unavailable on the `NSVisualEffectView` fallback. Shape capability checks, path application, and path clearing return `false` when the effect ID is invalid or `_setPath:` is unsupported. Clipping is checked independently and may remain available on a fallback view when its runtime implements `setClipsToBounds:`.
+
+The `Material` enum is stable library API, while most of its native `NSGlassEffectView` mappings use private AppKit variants. The `Experimental` namespace is additive but runtime-dependent and should always be guarded by its capability check.
 
 ## 🏗️ How It Works
 
@@ -207,7 +223,8 @@ Qt-liquid-glass uses a native injection strategy to place the glass layer behind
     *   **Standard Windows**: Injects the glass view as a *sibling* behind the Qt root view in the `NSThemeFrame`.
     *   **Frameless Windows**: Uses a best-effort native wrapper around the Qt root view so the glass can sit behind the Qt rendering layer.
     *   **Child Widgets**: Injects the glass view directly inside the widget's native view, behind its children.
-    *   **Duplicate Detection**: Uses Objective-C associated objects to automatically remove any existing glass before re-adding.
+    *   **Lifetime Tracking**: Uses Qt destruction callbacks and Objective-C associated objects to prevent registry entries from outliving their hosts.
+    *   **Duplicate Detection**: Automatically removes an existing effect before re-adding to the same native host.
 3.  **Fallback**: On macOS versions without `NSGlassEffectView`, falls back to `NSVisualEffectView` with mapped material values.
 
 ## 🙏 Acknowledgments
