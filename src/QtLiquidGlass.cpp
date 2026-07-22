@@ -59,7 +59,7 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
                 materialVal = 6; // NSVisualEffectMaterialPopover
                 break;
             case Material::Menu:
-                variantVal = 9; // 'notificationCenter' (closest to menu)
+                variantVal = 9; // 'notificationCenter'
                 materialVal = 5; // NSVisualEffectMaterialMenu
                 break;
             case Material::FullscreenUI:
@@ -68,7 +68,7 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
                 break;
             case Material::ControlCenter:
                 variantVal = 8; // 'controlCenter'
-                materialVal = 5; // Menu is reasonable fallback
+                materialVal = 5; // NSVisualEffectMaterialMenu
                 break;
             case Material::Widgets:
                 variantVal = 4; // 'widgets'
@@ -87,15 +87,15 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
                 materialVal = 17; // ToolTip
                 break;
             case Material::Frosted:
-                variantVal = 11; // Discovered via explorer
+                variantVal = 11;
                 materialVal = 1; // Light
                 break;
             case Material::ClearGlass:
-                variantVal = 13; // Discovered via explorer
+                variantVal = 13;
                 materialVal = 0; // AppearanceBased
                 break;
             case Material::Chromatic:
-                variantVal = 19; // Discovered via explorer
+                variantVal = 19;
                 materialVal = 1; // Light
                 break;
         }
