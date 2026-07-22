@@ -46,6 +46,13 @@ int main(int argc, char** argv) {
     if (!RemoveGlassEffectView(replacementId) || RemoveGlassEffectView(replacementId))
         return fail("explicit removal did not become a safe stale-ID operation");
 
+    const int readdedId = QtLiquidGlass::addGlassEffect(&widget);
+    if (readdedId < 0)
+        return fail("re-adding after explicit removal failed");
+    QtLiquidGlass::configure(readdedId, options);
+    if (!RemoveGlassEffectView(readdedId))
+        return fail("the re-added effect was not registered");
+
     QWidget* destroyedWidget = new QWidget;
     destroyedWidget->setWindowFlags(Qt::Window);
     const int destroyedWidgetId = QtLiquidGlass::addGlassEffect(destroyedWidget);

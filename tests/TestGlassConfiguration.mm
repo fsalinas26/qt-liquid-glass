@@ -5,6 +5,8 @@
 #include <QWidget>
 
 #import <AppKit/AppKit.h>
+#import <objc/message.h>
+#import <objc/runtime.h>
 
 #include <cmath>
 #include <iostream>
@@ -84,8 +86,11 @@ int main(int argc, char** argv) {
 
     QtLiquidGlass::Options options;
     options.cornerRadius = 14.0;
+    options.tintColor = "#804488CC";
     options.titlebarStyle = QtLiquidGlass::TitlebarStyle::TransparentFullSize;
     options.dragBehavior = QtLiquidGlass::WindowDragBehavior::Auto;
+    options.appearance = QtLiquidGlass::AdaptiveAppearance::Dark;
+    options.interaction = QtLiquidGlass::InteractionState::Hovered;
 
     const int effectId = QtLiquidGlass::addGlassEffect(&widget,
                                                         QtLiquidGlass::Material::Sidebar,
@@ -105,6 +110,17 @@ int main(int argc, char** argv) {
         !container.layer.masksToBounds) {
         return fail("initial container rounding was not applied");
     }
+    if (![originalGlass.appearance.name isEqualToString:NSAppearanceNameDarkAqua])
+        return fail("the requested appearance was not applied");
+    SEL interactionSelector = sel_registerName("_interactionState");
+    if ([originalGlass respondsToSelector:interactionSelector] &&
+        ((long long (*)(id, SEL))objc_msgSend)(originalGlass, interactionSelector) != 1) {
+        return fail("the requested interaction state was not applied");
+    }
+    if ([originalGlass respondsToSelector:@selector(tintColor)] &&
+        [(id)originalGlass tintColor] == nil) {
+        return fail("the requested tint was not applied");
+    }
 
     options.cornerRadius = 9.0;
     options.opaque = true;
@@ -123,6 +139,11 @@ int main(int argc, char** argv) {
         return fail("repeated configuration accumulated backing views");
     if (findGlassView(container) != originalGlass)
         return fail("configuration replaced the native glass view");
+
+    options.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
+    QtLiquidGlass::configure(effectId, options);
+    if (window.movableByWindowBackground)
+        return fail("Preserve did not restore the original drag policy");
 
     options.cornerRadius = 6.0;
     options.opaque = false;
@@ -155,6 +176,25 @@ int main(int argc, char** argv) {
         container.layer.masksToBounds) {
         return fail("removal did not restore the container layer");
     }
+
+    QtLiquidGlass::Options replacementOptions;
+    replacementOptions.cornerRadius = 5.0;
+    replacementOptions.opaque = true;
+    replacementOptions.titlebarStyle = QtLiquidGlass::TitlebarStyle::Preserve;
+    replacementOptions.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
+    const int materialFirstId = QtLiquidGlass::addGlassEffect(
+        &widget, QtLiquidGlass::Material::Sidebar, replacementOptions);
+    NSView* materialFirstView = findGlassView(host.superview);
+    const int materialSecondId = QtLiquidGlass::addGlassEffect(
+        &widget, QtLiquidGlass::Material::Hud, replacementOptions);
+    if (materialFirstId < 0 || materialSecondId < 0 ||
+        materialFirstId == materialSecondId ||
+        findGlassView(host.superview) == materialFirstView ||
+        countGlassViews(host.superview) != initialGlassCount + 1 ||
+        countCustomBoxes(host.superview) != initialBoxCount + 1) {
+        return fail("material replacement did not preserve options and view cardinality");
+    }
+    QtLiquidGlass::remove(materialSecondId);
 
     QWidget parent;
     parent.setWindowFlags(Qt::Window);
