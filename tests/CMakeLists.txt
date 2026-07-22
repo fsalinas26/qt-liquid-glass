@@ -29,3 +29,20 @@ target_link_libraries(TestGlassLifecycle PRIVATE
 )
 
 add_test(NAME QtLiquidGlass.Lifecycle COMMAND TestGlassLifecycle)
+
+add_executable(TestGlassConfiguration
+    TestGlassConfiguration.mm
+)
+
+target_include_directories(TestGlassConfiguration PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
+target_link_libraries(TestGlassConfiguration PRIVATE
+    Qt6::Core
+    Qt6::Widgets
+    QtLiquidGlass
+    ${APPKIT_LIBRARY}
+)
+
+add_test(NAME QtLiquidGlass.Configuration COMMAND TestGlassConfiguration)
