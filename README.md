@@ -106,6 +106,20 @@ The included example demonstrates how to switch materials and configure properti
   <img src="docs/images/demo.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
 </div>
 
+### Shape Playground
+
+The standalone `ShapePlayground` turns the demo's media-player theme into a
+practical custom-shape example. A compact player with an album-art lobe morphs
+into a full now-playing surface while the native glass effect remains alive.
+Click the player or press Space to reverse the interruptible spring transition;
+press Escape or right-click to close it.
+
+```bash
+cmake -S . -B build -DBUILD_TESTING=ON
+cmake --build build --target ShapePlayground
+./build/examples/ShapePlayground/ShapePlayground
+```
+
 ## 📚 API Documentation
 
 ### Methods

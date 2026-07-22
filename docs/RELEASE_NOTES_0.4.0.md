@@ -9,6 +9,7 @@ QtLiquidGlass 0.4.0 hardens effect lifetime and native-state restoration while a
 - Support for paths transformed with `QTransform`.
 - Automatic effect invalidation when a Qt or native host is destroyed.
 - Native lifecycle, restoration, configuration, fallback, and shape regression tests.
+- A standalone morphing media player demonstrating animated custom paths.
 
 ## Changed
 
