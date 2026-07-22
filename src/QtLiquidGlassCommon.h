@@ -50,7 +50,10 @@
         bool ClearGlassViewShape(int viewId);
         bool SetGlassViewClipsToBounds(int viewId, bool enabled);
 
+        __attribute__((visibility("hidden")))
         bool GlassEffectViewExists(int viewId);
+        __attribute__((visibility("hidden")))
+        void SetGlassEffectViewFallbackForTesting(bool forced);
 
         void RemoveGlassEffectView(int viewId);
     }

@@ -1,4 +1,5 @@
 #include "QtLiquidGlass/QtLiquidGlass.h"
+#include "QtLiquidGlassCommon.h"
 
 #include <QApplication>
 #include <QPainterPath>
@@ -20,6 +21,7 @@ NSView* findGlassView(QWidget& widget) {
     Class glassClass = NSClassFromString(@"NSGlassEffectView");
     for (NSView* child in container.subviews) {
         if (glassClass && [child isKindOfClass:glassClass]) return child;
+        if ([child isKindOfClass:[NSVisualEffectView class]]) return child;
     }
     return nil;
 }
@@ -96,6 +98,37 @@ int main(int argc, char** argv) {
         return fail("QTransform changes were not preserved in the native glass path");
     }
 
+    QtLiquidGlass::Options configuredOptions;
+    configuredOptions.cornerRadius = 12.0;
+    configuredOptions.tintColor = "#804488CC";
+    configuredOptions.opaque = true;
+    QtLiquidGlass::configure(effectId, configuredOptions);
+    nativePath = ((CGPathRef (*)(id, SEL))objc_msgSend)(glass, pathSelector);
+    if (!nativePath ||
+        !closeEnough(CGRectGetMinX(CGPathGetBoundingBox(nativePath)), 17.0)) {
+        return fail("ordinary configuration discarded the custom path");
+    }
+
+    widget.resize(220, 130);
+    QApplication::processEvents();
+    if (!QtLiquidGlass::Experimental::setShape(effectId, shape))
+        return fail("setShape rejected a path after resizing");
+    nativePath = ((CGPathRef (*)(id, SEL))objc_msgSend)(glass, pathSelector);
+    const CGRect resizedBox = CGPathGetBoundingBox(nativePath);
+    if (!closeEnough(CGRectGetMaxY(resizedBox), NSHeight(glass.bounds) - 5.0))
+        return fail("reapplied shape did not use the resized glass bounds");
+
+    for (int i = 0; i < 128; ++i) {
+        const QPainterPath replacement = QTransform::fromTranslate(i % 5, i % 3).map(shape);
+        if (!QtLiquidGlass::Experimental::setShape(effectId, replacement) ||
+            !QtLiquidGlass::Experimental::clearShape(effectId)) {
+            return fail("repeated shape replacement or clearing failed");
+        }
+    }
+
+    if (!QtLiquidGlass::Experimental::setShape(effectId, shape))
+        return fail("setShape failed after repeated replacement");
+
     if (!QtLiquidGlass::Experimental::setClipsToBounds(effectId, true))
         return fail("setClipsToBounds rejected a supported glass view");
     if (!glass.clipsToBounds) return fail("native clipsToBounds was not enabled");
@@ -106,6 +139,31 @@ int main(int argc, char** argv) {
     if (nativePath) return fail("clearShape did not clear the custom native path");
 
     QtLiquidGlass::remove(effectId);
+
+    SetGlassEffectViewFallbackForTesting(true);
+    QWidget fallbackWidget;
+    fallbackWidget.setWindowFlags(Qt::Window);
+    fallbackWidget.resize(120, 70);
+    const int fallbackId = QtLiquidGlass::addGlassEffect(&fallbackWidget);
+    if (fallbackId < 0) return fail("fallback effect creation failed");
+
+    NSView* fallbackView = findGlassView(fallbackWidget);
+    if (![fallbackView isKindOfClass:[NSVisualEffectView class]])
+        return fail("forced fallback did not create NSVisualEffectView");
+    if (QtLiquidGlass::Experimental::supportsCustomShapes(fallbackId) ||
+        QtLiquidGlass::Experimental::setShape(fallbackId, shape) ||
+        QtLiquidGlass::Experimental::clearShape(fallbackId)) {
+        return fail("the fallback backend accepted custom shape operations");
+    }
+    const bool expectedFallbackClipping =
+        [fallbackView respondsToSelector:sel_registerName("setClipsToBounds:")];
+    if (QtLiquidGlass::Experimental::setClipsToBounds(fallbackId, true) !=
+        expectedFallbackClipping) {
+        return fail("fallback clipping did not match its runtime capability");
+    }
+    QtLiquidGlass::remove(fallbackId);
+    SetGlassEffectViewFallbackForTesting(false);
+
     std::cout << "All custom glass shape checks passed.\n";
     return 0;
 }

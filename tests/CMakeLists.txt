@@ -11,6 +11,10 @@ target_link_libraries(TestGlassShape PRIVATE
     ${APPKIT_LIBRARY}
 )
 
+target_include_directories(TestGlassShape PRIVATE
+    ${PROJECT_SOURCE_DIR}/src
+)
+
 add_test(NAME QtLiquidGlass.CustomShape COMMAND TestGlassShape)
 
 add_executable(TestGlassLifecycle

@@ -41,6 +41,11 @@ static int NextViewId() {
     return (*nextViewId)++;
 }
 
+static bool& ForceVisualEffectFallback() {
+    static bool* forced = new bool(false);
+    return *forced;
+}
+
 static void InvalidateGlassEffectView(int viewId);
 
 @interface QTLiquidGlassLifetimeToken : NSObject {
@@ -235,7 +240,9 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     }
 
     NSView *glass = nil;
-    Class glassCls = NSClassFromString(@"NSGlassEffectView");
+    Class glassCls = ForceVisualEffectFallback()
+        ? Nil
+        : NSClassFromString(@"NSGlassEffectView");
     if (glassCls) {
         glass = [[glassCls alloc] initWithFrame:frameRect];
     } else {
@@ -438,6 +445,12 @@ extern "C" bool GlassEffectViewExists(int viewId) {
     exists = Registry().find(viewId) != Registry().end();
   });
   return exists;
+}
+
+extern "C" void SetGlassEffectViewFallbackForTesting(bool forced) {
+  RUN_ON_MAIN(^{
+    ForceVisualEffectFallback() = forced;
+  });
 }
 
 // -----------------------------------------------------------------------------
