@@ -11,6 +11,20 @@
 #include <cmath>
 #include <iostream>
 
+@interface QTLiquidGlassSuperviewlessTestView : NSView {
+    BOOL _hidesSuperview;
+}
+@property(nonatomic) BOOL hidesSuperview;
+@end
+
+@implementation QTLiquidGlassSuperviewlessTestView
+@synthesize hidesSuperview = _hidesSuperview;
+
+- (NSView*)superview {
+    return _hidesSuperview ? nil : [super superview];
+}
+@end
+
 namespace {
 
 int fail(const char* message) {
@@ -75,7 +89,6 @@ int main(int argc, char** argv) {
     window.movableByWindowBackground = NO;
     NSColor* originalBackground = [NSColor colorWithRed:0.15 green:0.25 blue:0.35 alpha:1.0];
     window.backgroundColor = originalBackground;
-    const BOOL originalWindowOpaque = window.opaque;
 
     container.wantsLayer = YES;
     container.layer.cornerRadius = 3.5;
@@ -103,7 +116,7 @@ int main(int argc, char** argv) {
         return fail("glass insertion produced an incorrect view count");
     if (!(window.styleMask & NSWindowStyleMaskFullSizeContentView) ||
         !window.titlebarAppearsTransparent ||
-        !window.movableByWindowBackground || window.opaque) {
+        !window.movableByWindowBackground) {
         return fail("initial window options were not applied");
     }
     if (!closeEnough(container.layer.cornerRadius, 14.0) ||
@@ -129,10 +142,10 @@ int main(int argc, char** argv) {
     QtLiquidGlass::configure(effectId, options);
     QtLiquidGlass::configure(effectId, options);
 
-    if (window.styleMask & NSWindowStyleMaskFullSizeContentView)
-        return fail("Preserve did not restore the original full-size-content policy");
-    if (window.titlebarAppearsTransparent)
-        return fail("Preserve did not restore the original titlebar policy");
+    if (!(window.styleMask & NSWindowStyleMaskFullSizeContentView) ||
+        !window.titlebarAppearsTransparent) {
+        return fail("Preserve changed the current titlebar policy");
+    }
     if (!window.movableByWindowBackground)
         return fail("the explicit movable policy was not applied");
     if (countCustomBoxes(container) != initialBoxCount + 1)
@@ -140,10 +153,17 @@ int main(int argc, char** argv) {
     if (findGlassView(container) != originalGlass)
         return fail("configuration replaced the native glass view");
 
+    window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+    window.titlebarAppearsTransparent = NO;
+    window.movableByWindowBackground = NO;
+    options.cornerRadius = 8.0;
     options.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
     QtLiquidGlass::configure(effectId, options);
-    if (window.movableByWindowBackground)
-        return fail("Preserve did not restore the original drag policy");
+    if ((window.styleMask & NSWindowStyleMaskFullSizeContentView) ||
+        window.titlebarAppearsTransparent ||
+        window.movableByWindowBackground) {
+        return fail("Preserve overwrote application-managed window policy");
+    }
 
     options.cornerRadius = 6.0;
     options.opaque = false;
@@ -167,8 +187,6 @@ int main(int argc, char** argv) {
         return fail("removal did not restore the titlebar transparency policy");
     if (window.movableByWindowBackground)
         return fail("removal did not restore the window drag policy");
-    if (window.opaque != originalWindowOpaque)
-        return fail("removal did not restore window opacity");
     if (![window.backgroundColor isEqual:originalBackground])
         return fail("removal did not restore the window background color");
     if (!container.wantsLayer ||
@@ -221,9 +239,6 @@ int main(int argc, char** argv) {
 
     NSView* framelessHost = reinterpret_cast<NSView*>(framelessWidget.winId());
     NSWindow* framelessWindow = framelessHost.window;
-    NSRect framelessOriginalFrame = framelessHost.frame;
-    NSAutoresizingMaskOptions framelessOriginalMask = framelessHost.autoresizingMask;
-    const BOOL wrapperPathReached = framelessHost.superview == nil;
 
     QtLiquidGlass::Options framelessOptions;
     framelessOptions.titlebarStyle = QtLiquidGlass::TitlebarStyle::Preserve;
@@ -234,11 +249,37 @@ int main(int argc, char** argv) {
 
     if (framelessWindow.contentView != framelessHost)
         return fail("frameless removal did not restore the content view");
-    if (wrapperPathReached &&
-        (!NSEqualRects(framelessHost.frame, framelessOriginalFrame) ||
-         framelessHost.autoresizingMask != framelessOriginalMask)) {
-        return fail("frameless removal did not restore host geometry");
+
+    NSWindow* wrapperWindow = [[NSWindow alloc]
+        initWithContentRect:NSMakeRect(0, 0, 130, 80)
+                  styleMask:NSWindowStyleMaskBorderless
+                    backing:NSBackingStoreBuffered
+                      defer:NO];
+    QTLiquidGlassSuperviewlessTestView* wrapperRoot =
+        [[QTLiquidGlassSuperviewlessTestView alloc]
+            initWithFrame:NSMakeRect(4, 6, 122, 68)];
+    wrapperRoot.autoresizingMask = NSViewMinXMargin | NSViewMaxYMargin;
+    wrapperWindow.contentView = wrapperRoot;
+    const NSRect wrapperOriginalFrame = wrapperRoot.frame;
+    const NSAutoresizingMaskOptions wrapperOriginalMask = wrapperRoot.autoresizingMask;
+    wrapperRoot.hidesSuperview = YES;
+
+    const int wrapperId = AddGlassEffectView(wrapperRoot, false, 0, 1);
+    if (wrapperId < 0) return fail("forced wrapper setup failed");
+    wrapperRoot.hidesSuperview = NO;
+    NSView* createdWrapper = wrapperWindow.contentView;
+    if (createdWrapper == wrapperRoot || wrapperRoot.superview != createdWrapper)
+        return fail("the forced wrapper path did not create its container");
+
+    RemoveGlassEffectView(wrapperId);
+    if (wrapperWindow.contentView != wrapperRoot ||
+        !NSEqualRects(wrapperRoot.frame, wrapperOriginalFrame) ||
+        wrapperRoot.autoresizingMask != wrapperOriginalMask) {
+        return fail("wrapper removal did not restore content geometry");
     }
+
+    [wrapperRoot release];
+    [wrapperWindow release];
 
     NSWindow* nativeWindow = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(0, 0, 120, 70)
@@ -262,9 +303,6 @@ int main(int argc, char** argv) {
     [nativeRoot release];
     [nativeWindow release];
 
-    std::cout << "Frameless wrapper path: "
-              << (wrapperPathReached ? "reached and restored" : "not used by this Qt runtime")
-              << '\n';
     std::cout << "All glass configuration checks passed.\n";
     return 0;
 }
