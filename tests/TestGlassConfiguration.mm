@@ -173,6 +173,33 @@ int main(int argc, char** argv) {
     if (countGlassViews(childHost) != childInitialGlassCount)
         return fail("child-widget removal left a glass view behind");
 
+    QWidget framelessWidget;
+    framelessWidget.setWindowFlags(Qt::Window | Qt::FramelessWindowHint);
+    framelessWidget.setAttribute(Qt::WA_NativeWindow);
+    framelessWidget.setAttribute(Qt::WA_TranslucentBackground);
+    framelessWidget.resize(140, 75);
+
+    NSView* framelessHost = reinterpret_cast<NSView*>(framelessWidget.winId());
+    NSWindow* framelessWindow = framelessHost.window;
+    NSRect framelessOriginalFrame = framelessHost.frame;
+    NSAutoresizingMaskOptions framelessOriginalMask = framelessHost.autoresizingMask;
+    const BOOL wrapperPathReached = framelessHost.superview == nil;
+
+    QtLiquidGlass::Options framelessOptions;
+    framelessOptions.titlebarStyle = QtLiquidGlass::TitlebarStyle::Preserve;
+    const int framelessId = QtLiquidGlass::addGlassEffect(
+        &framelessWidget, QtLiquidGlass::Material::Sidebar, framelessOptions);
+    if (framelessId < 0) return fail("frameless glass insertion failed");
+    QtLiquidGlass::remove(framelessId);
+
+    if (framelessWindow.contentView != framelessHost)
+        return fail("frameless removal did not restore the content view");
+    if (wrapperPathReached &&
+        (!NSEqualRects(framelessHost.frame, framelessOriginalFrame) ||
+         framelessHost.autoresizingMask != framelessOriginalMask)) {
+        return fail("frameless removal did not restore host geometry");
+    }
+
     NSWindow* nativeWindow = [[NSWindow alloc]
         initWithContentRect:NSMakeRect(0, 0, 120, 70)
                   styleMask:NSWindowStyleMaskTitled
@@ -195,6 +222,9 @@ int main(int argc, char** argv) {
     [nativeRoot release];
     [nativeWindow release];
 
+    std::cout << "Frameless wrapper path: "
+              << (wrapperPathReached ? "reached and restored" : "not used by this Qt runtime")
+              << '\n';
     std::cout << "All glass configuration checks passed.\n";
     return 0;
 }
