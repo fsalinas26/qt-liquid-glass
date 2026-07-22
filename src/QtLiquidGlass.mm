@@ -41,11 +41,6 @@ static int NextViewId() {
     return (*nextViewId)++;
 }
 
-static bool& ForceVisualEffectFallback() {
-    static bool* forced = new bool(false);
-    return *forced;
-}
-
 static void InvalidateGlassEffectView(int viewId);
 
 @interface QTLiquidGlassLifetimeToken : NSObject {
@@ -154,7 +149,8 @@ static NSBox* CreateOpaqueBacking(NSRect frame) {
 extern "C" int AddGlassEffectView(void* nativeViewPtr,
                                   bool opaque,
                                   int titlebarStyle,
-                                  int dragBehavior) {
+                                  int dragBehavior,
+                                  bool forceVisualEffectFallback) {
   if (!nativeViewPtr) return -1;
 
   __block int resultId = -1;
@@ -240,7 +236,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     }
 
     NSView *glass = nil;
-    Class glassCls = ForceVisualEffectFallback()
+    Class glassCls = forceVisualEffectFallback
         ? Nil
         : NSClassFromString(@"NSGlassEffectView");
     if (glassCls) {
@@ -390,7 +386,8 @@ extern "C" void ConfigureGlassView(int viewId,
 
 // Detaches the glass and backing views, clears the associated object, and
 // removes the context from the registry.
-extern "C" void RemoveGlassEffectView(int viewId) {
+extern "C" bool RemoveGlassEffectView(int viewId) {
+  __block bool removed = false;
   RUN_ON_MAIN(^{
     auto& registry = Registry();
     auto it = registry.find(viewId);
@@ -436,21 +433,9 @@ extern "C" void RemoveGlassEffectView(int viewId) {
     }
     if (ctx.originalBackgroundColor) [ctx.originalBackgroundColor release];
     registry.erase(it);
+    removed = true;
   });
-}
-
-extern "C" bool GlassEffectViewExists(int viewId) {
-  __block bool exists = false;
-  RUN_ON_MAIN(^{
-    exists = Registry().find(viewId) != Registry().end();
-  });
-  return exists;
-}
-
-extern "C" void SetGlassEffectViewFallbackForTesting(bool forced) {
-  RUN_ON_MAIN(^{
-    ForceVisualEffectFallback() = forced;
-  });
+  return removed;
 }
 
 // -----------------------------------------------------------------------------

@@ -140,14 +140,17 @@ int main(int argc, char** argv) {
 
     QtLiquidGlass::remove(effectId);
 
-    SetGlassEffectViewFallbackForTesting(true);
-    QWidget fallbackWidget;
-    fallbackWidget.setWindowFlags(Qt::Window);
-    fallbackWidget.resize(120, 70);
-    const int fallbackId = QtLiquidGlass::addGlassEffect(&fallbackWidget);
+    NSView* fallbackHost = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 120, 70)];
+    const int fallbackId = AddGlassEffectView(fallbackHost, false, 0, 1, true);
     if (fallbackId < 0) return fail("fallback effect creation failed");
 
-    NSView* fallbackView = findGlassView(fallbackWidget);
+    NSView* fallbackView = nil;
+    for (NSView* child in fallbackHost.subviews) {
+        if ([child isKindOfClass:[NSVisualEffectView class]]) {
+            fallbackView = child;
+            break;
+        }
+    }
     if (![fallbackView isKindOfClass:[NSVisualEffectView class]])
         return fail("forced fallback did not create NSVisualEffectView");
     if (QtLiquidGlass::Experimental::supportsCustomShapes(fallbackId) ||
@@ -162,7 +165,7 @@ int main(int argc, char** argv) {
         return fail("fallback clipping did not match its runtime capability");
     }
     QtLiquidGlass::remove(fallbackId);
-    SetGlassEffectViewFallbackForTesting(false);
+    [fallbackHost release];
 
     std::cout << "All custom glass shape checks passed.\n";
     return 0;

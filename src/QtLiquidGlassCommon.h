@@ -21,7 +21,8 @@
         int AddGlassEffectView(void* nativeViewPtr,
                                bool opaque,
                                int titlebarStyle,
-                               int dragBehavior);
+                               int dragBehavior,
+                               bool forceVisualEffectFallback = false);
         
         // Configure with raw color values (0.0 - 1.0) to avoid string parsing in ObjC
         void ConfigureGlassView(int viewId,
@@ -50,12 +51,7 @@
         bool ClearGlassViewShape(int viewId);
         bool SetGlassViewClipsToBounds(int viewId, bool enabled);
 
-        __attribute__((visibility("hidden")))
-        bool GlassEffectViewExists(int viewId);
-        __attribute__((visibility("hidden")))
-        void SetGlassEffectViewFallbackForTesting(bool forced);
-
-        void RemoveGlassEffectView(int viewId);
+        bool RemoveGlassEffectView(int viewId);
     }
 #endif
 
