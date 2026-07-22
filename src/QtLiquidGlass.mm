@@ -25,6 +25,12 @@ struct GlassContext {
     BOOL managesTitlebarStyle;
     BOOL managesMovableByWindowBackground;
     BOOL appliedMovableByWindowBackground;
+    BOOL originalContainerWantsLayer;
+    CGFloat originalContainerCornerRadius;
+    BOOL originalContainerMasksToBounds;
+    BOOL createdContainer;
+    NSRect originalHostFrame;
+    NSAutoresizingMaskOptions originalHostAutoresizingMask;
     int id;
 };
 
@@ -129,6 +135,8 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     BOOL managesTitlebarStyle = NO;
     BOOL managesMovableByWindowBackground = NO;
     BOOL appliedMovableByWindowBackground = NO;
+    NSRect originalHostFrame = rootView.frame;
+    NSAutoresizingMaskOptions originalHostAutoresizingMask = rootView.autoresizingMask;
 
     if (isRoot) {
         originalFullSizeContentView = ((win.styleMask & NSWindowStyleMaskFullSizeContentView) != 0);
@@ -184,6 +192,10 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
         // Child widget: inject inside its native view
         container = rootView;
     }
+
+    BOOL originalContainerWantsLayer = container.wantsLayer;
+    CGFloat originalContainerCornerRadius = container.layer.cornerRadius;
+    BOOL originalContainerMasksToBounds = container.layer.masksToBounds;
 
     NSRect frameRect = (container == rootView) ? [rootView bounds] : [rootView frame];
     if (isRoot && container != [rootView superview]) {
@@ -250,6 +262,12 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     ctx.managesTitlebarStyle = isRoot ? managesTitlebarStyle : NO;
     ctx.managesMovableByWindowBackground = isRoot ? managesMovableByWindowBackground : NO;
     ctx.appliedMovableByWindowBackground = isRoot ? appliedMovableByWindowBackground : NO;
+    ctx.originalContainerWantsLayer = originalContainerWantsLayer;
+    ctx.originalContainerCornerRadius = originalContainerCornerRadius;
+    ctx.originalContainerMasksToBounds = originalContainerMasksToBounds;
+    ctx.createdContainer = (createdContainer != nil);
+    ctx.originalHostFrame = originalHostFrame;
+    ctx.originalHostAutoresizingMask = originalHostAutoresizingMask;
 
     Registry()[id] = ctx;
     objc_setAssociatedObject(rootView, kGlassContextIdKey, @(id), OBJC_ASSOCIATION_RETAIN);
@@ -329,6 +347,20 @@ extern "C" void RemoveGlassEffectView(int viewId) {
     // Detach views and clear the associated object on the host
     if (ctx.glassView) [ctx.glassView removeFromSuperview];
     if (ctx.backgroundView) [ctx.backgroundView removeFromSuperview];
+    if (ctx.containerView && ctx.containerView != ctx.hostView && !ctx.createdContainer) {
+        ctx.containerView.wantsLayer = YES;
+        ctx.containerView.layer.cornerRadius = ctx.originalContainerCornerRadius;
+        ctx.containerView.layer.masksToBounds = ctx.originalContainerMasksToBounds;
+        ctx.containerView.wantsLayer = ctx.originalContainerWantsLayer;
+    }
+    if (ctx.createdContainer && ctx.window && ctx.hostView) {
+        NSView* hostView = [ctx.hostView retain];
+        [hostView removeFromSuperview];
+        [ctx.window setContentView:hostView];
+        hostView.frame = ctx.originalHostFrame;
+        hostView.autoresizingMask = ctx.originalHostAutoresizingMask;
+        [hostView release];
+    }
     if (ctx.window) {
         if (ctx.managesTitlebarStyle) {
             NSWindowStyleMask styleMask = ctx.window.styleMask;
