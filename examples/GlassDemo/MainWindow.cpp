@@ -15,9 +15,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     setupUi();
     resize(620, 240);
 
-    QtLiquidGlass::Options opts;
-    opts.cornerRadius = 16.0;
-    m_glassId = QtLiquidGlass::addGlassEffect(this, QtLiquidGlass::Material::Sidebar, opts);
+    m_currentOpts.cornerRadius = 16.0;
+    m_glassId = QtLiquidGlass::addGlassEffect(this, m_currentMat, m_currentOpts);
 }
 
 MainWindow::~MainWindow() {
@@ -27,14 +26,16 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::updateGlass(QtLiquidGlass::Options opts, QtLiquidGlass::Material mat) {
+    const bool materialChanged = mat != m_currentMat;
     m_currentOpts = opts;
-    m_currentMat = mat;
 
-    if (m_glassId >= 0) {
-        QtLiquidGlass::configure(m_glassId, opts);
-        // Re-add to switch material; replaces the existing view automatically
+    if (m_glassId < 0 || materialChanged) {
         m_glassId = QtLiquidGlass::addGlassEffect(this, mat, opts);
+    } else {
+        QtLiquidGlass::configure(m_glassId, opts);
     }
+
+    m_currentMat = mat;
 }
 
 void MainWindow::setupUi() {

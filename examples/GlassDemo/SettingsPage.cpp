@@ -295,29 +295,17 @@ void SettingsPage::updateCodeSnippet() {
     QString interaction = hoveredCheck->isChecked() ? "Hovered" : "Normal";
 
     QString html = QString(
-        "<span style='color:#569CD6'>addGlassEffect</span>"
-        "<span style='color:#D4D4D4'>(</span>"
-        "<span style='color:#569CD6'>this</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#4EC9B0'>Material</span>"
-        "<span style='color:#D4D4D4'>::</span>"
-        "<span style='color:#4EC9B0'>%1</span>"
-        "<span style='color:#D4D4D4'>, {</span>"
-        "<span style='color:#B5CEA8'>%2</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#CE9178'>%3</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#569CD6'>%4</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#4EC9B0'>%5</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#4EC9B0'>%6</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#4EC9B0'>%7</span>"
-        "<span style='color:#D4D4D4'>, </span>"
-        "<span style='color:#4EC9B0'>%8</span>"
-        "<span style='color:#D4D4D4'>});</span>"
-    ).arg(matName, radius, tint, opaque, appearance, interaction, titlebar, drag);
+        "<span style='color:#4EC9B0'>Options</span> opts;<br>"
+        "opts.cornerRadius = <span style='color:#B5CEA8'>%1</span>;<br>"
+        "opts.tintColor = <span style='color:#CE9178'>%2</span>;<br>"
+        "opts.opaque = <span style='color:#569CD6'>%3</span>;<br>"
+        "opts.titlebarStyle = TitlebarStyle::<span style='color:#4EC9B0'>%4</span>;<br>"
+        "opts.dragBehavior = WindowDragBehavior::<span style='color:#4EC9B0'>%5</span>;<br>"
+        "opts.appearance = AdaptiveAppearance::<span style='color:#4EC9B0'>%6</span>;<br>"
+        "opts.interaction = InteractionState::<span style='color:#4EC9B0'>%7</span>;<br><br>"
+        "<span style='color:#569CD6'>addGlassEffect</span>(this, Material::"
+        "<span style='color:#4EC9B0'>%8</span>, opts);"
+    ).arg(radius, tint, opaque, titlebar, drag, appearance, interaction, matName);
 
     codeDisplay->setHtml(html);
 }
