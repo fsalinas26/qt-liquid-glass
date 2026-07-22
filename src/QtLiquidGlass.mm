@@ -28,11 +28,49 @@ struct GlassContext {
     int id;
 };
 
-static std::map<int, GlassContext> g_registry;
-static int g_nextViewId = 1; // Start at 1
+static std::map<int, GlassContext>& Registry() {
+    static auto* registry = new std::map<int, GlassContext>();
+    return *registry;
+}
+
+static int NextViewId() {
+    static int* nextViewId = new int(1);
+    return (*nextViewId)++;
+}
+
+static void InvalidateGlassEffectView(int viewId);
+
+@interface QTLiquidGlassLifetimeToken : NSObject {
+    int _viewId;
+    BOOL _active;
+}
+- (instancetype)initWithViewId:(int)viewId;
+- (void)invalidate;
+@end
+
+@implementation QTLiquidGlassLifetimeToken
+- (instancetype)initWithViewId:(int)viewId {
+    self = [super init];
+    if (self) {
+        _viewId = viewId;
+        _active = YES;
+    }
+    return self;
+}
+
+- (void)invalidate {
+    _active = NO;
+}
+
+- (void)dealloc {
+    if (_active) InvalidateGlassEffectView(_viewId);
+    [super dealloc];
+}
+@end
 
 // Keys for objc-associated objects (to find ID from View)
 static const void *kGlassContextIdKey = &kGlassContextIdKey;
+static const void *kGlassLifetimeTokenKey = &kGlassLifetimeTokenKey;
 
 #define RUN_ON_MAIN(block)                                  \
   if ([NSThread isMainThread]) {                            \
@@ -40,6 +78,18 @@ static const void *kGlassContextIdKey = &kGlassContextIdKey;
   } else {                                                  \
     dispatch_sync(dispatch_get_main_queue(), block);        \
   }
+
+static void InvalidateGlassEffectView(int viewId) {
+  RUN_ON_MAIN(^{
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
+    if (it->second.originalBackgroundColor) {
+      [it->second.originalBackgroundColor release];
+    }
+    registry.erase(it);
+  });
+}
 
 // -----------------------------------------------------------------------------
 // Implementation
@@ -184,7 +234,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     }
 
     // Register context and associate the ID with the host view
-    int id = g_nextViewId++;
+    int id = NextViewId();
     GlassContext ctx;
     ctx.id = id;
     ctx.glassView = glass;
@@ -201,8 +251,13 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     ctx.managesMovableByWindowBackground = isRoot ? managesMovableByWindowBackground : NO;
     ctx.appliedMovableByWindowBackground = isRoot ? appliedMovableByWindowBackground : NO;
 
-    g_registry[id] = ctx;
+    Registry()[id] = ctx;
     objc_setAssociatedObject(rootView, kGlassContextIdKey, @(id), OBJC_ASSOCIATION_RETAIN);
+    QTLiquidGlassLifetimeToken *lifetimeToken =
+        [[QTLiquidGlassLifetimeToken alloc] initWithViewId:id];
+    objc_setAssociatedObject(rootView, kGlassLifetimeTokenKey, lifetimeToken,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    [lifetimeToken release];
 
     // Balance alloc/init ownership. The AppKit view hierarchy now owns these views.
     if (glass) [glass release];
@@ -220,8 +275,9 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
 // rectangular backgrounds from bleeding through transparent glass materials.
 extern "C" void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint, double r, double g, double b, double a) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     GlassContext& ctx = it->second;
 
     if (ctx.glassView) {
@@ -265,8 +321,9 @@ extern "C" void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint
 // removes the context from the registry.
 extern "C" void RemoveGlassEffectView(int viewId) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     GlassContext& ctx = it->second;
 
     // Detach views and clear the associated object on the host
@@ -295,11 +352,24 @@ extern "C" void RemoveGlassEffectView(int viewId) {
         }
     }
     if (ctx.hostView) {
+        QTLiquidGlassLifetimeToken *lifetimeToken =
+            objc_getAssociatedObject(ctx.hostView, kGlassLifetimeTokenKey);
+        [lifetimeToken invalidate];
+        objc_setAssociatedObject(ctx.hostView, kGlassLifetimeTokenKey, nil,
+                                 OBJC_ASSOCIATION_ASSIGN);
         objc_setAssociatedObject(ctx.hostView, kGlassContextIdKey, nil, OBJC_ASSOCIATION_ASSIGN);
     }
     if (ctx.originalBackgroundColor) [ctx.originalBackgroundColor release];
-    g_registry.erase(it);
+    registry.erase(it);
   });
+}
+
+extern "C" bool GlassEffectViewExists(int viewId) {
+  __block bool exists = false;
+  RUN_ON_MAIN(^{
+    exists = Registry().find(viewId) != Registry().end();
+  });
+  return exists;
 }
 
 // -----------------------------------------------------------------------------
@@ -309,8 +379,9 @@ extern "C" void RemoveGlassEffectView(int viewId) {
 // Sets the private _variant property that controls the glass style (e.g. 16=sidebar, 2=dock).
 extern "C" void SetGlassViewVariant(int viewId, int variant) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     SEL sel = sel_registerName("set_variant:");
@@ -323,8 +394,9 @@ extern "C" void SetGlassViewVariant(int viewId, int variant) {
 // Only applies to the NSVisualEffectView fallback path
 extern "C" void SetGlassViewMaterial(int viewId, int material) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     if ([glass isKindOfClass:[NSVisualEffectView class]]) {
@@ -336,8 +408,9 @@ extern "C" void SetGlassViewMaterial(int viewId, int material) {
 // Sets blending mode: 0=BehindWindow (blur desktop), 1=WithinWindow (blur app content).
 extern "C" void SetGlassViewBlendingMode(int viewId, int mode) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     // NSGlassEffectView inherits from NSView, not NSVisualEffectView
@@ -351,8 +424,9 @@ extern "C" void SetGlassViewBlendingMode(int viewId, int mode) {
 // Sets the private _scrimState property (overlay dimming layer).
 extern "C" void SetGlassViewScrim(int viewId, int scrim) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     SEL sel = sel_registerName("set_scrimState:");
@@ -365,8 +439,9 @@ extern "C" void SetGlassViewScrim(int viewId, int scrim) {
 // Sets the private _subduedState property (reduces vibrancy/saturation).
 extern "C" void SetGlassViewSubdued(int viewId, int subdued) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     SEL sel = sel_registerName("set_subduedState:");
@@ -379,8 +454,9 @@ extern "C" void SetGlassViewSubdued(int viewId, int subdued) {
 // Sets the private _contentLensing property (refraction intensity).
 extern "C" void SetGlassViewContentLensing(int viewId, int lensing) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     SEL sel = sel_registerName("set_contentLensing:");
@@ -394,8 +470,9 @@ extern "C" void SetGlassViewContentLensing(int viewId, int lensing) {
 // for reliable control, plus the private _adaptiveAppearance property.
 extern "C" void SetGlassViewAdaptiveAppearance(int viewId, int appearance) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     // Use the public NSView.appearance API for reliable light/dark control
@@ -424,8 +501,9 @@ extern "C" void SetGlassViewAdaptiveAppearance(int viewId, int appearance) {
 // values >= 2 trigger a Swift precondition crash in NSGlassEffectView.
 extern "C" void SetGlassViewInteractionState(int viewId, int state) {
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     NSView* glass = it->second.glassView;
 
     // Clamp: values >= 2 crash (Swift precondition in NSGlassEffectView)
@@ -483,8 +561,9 @@ static CGPathRef CreateGlassPath(const GlassPathElement* elements,
 extern "C" bool GlassViewSupportsCustomShapes(int viewId) {
   __block bool supported = false;
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
     supported = [it->second.glassView respondsToSelector:sel_registerName("_setPath:")];
   });
   return supported;
@@ -497,8 +576,9 @@ extern "C" bool SetGlassViewShape(int viewId,
 
   __block bool applied = false;
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
 
     NSView* glass = it->second.glassView;
     SEL selector = sel_registerName("_setPath:");
@@ -515,8 +595,9 @@ extern "C" bool SetGlassViewShape(int viewId,
 extern "C" bool ClearGlassViewShape(int viewId) {
   __block bool cleared = false;
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
 
     NSView* glass = it->second.glassView;
     SEL selector = sel_registerName("_setPath:");
@@ -531,8 +612,9 @@ extern "C" bool ClearGlassViewShape(int viewId) {
 extern "C" bool SetGlassViewClipsToBounds(int viewId, bool enabled) {
   __block bool applied = false;
   RUN_ON_MAIN(^{
-    auto it = g_registry.find(viewId);
-    if (it == g_registry.end()) return;
+    auto& registry = Registry();
+    auto it = registry.find(viewId);
+    if (it == registry.end()) return;
 
     NSView* glass = it->second.glassView;
     SEL selector = sel_registerName("setClipsToBounds:");

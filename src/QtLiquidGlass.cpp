@@ -30,6 +30,10 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
                                 static_cast<int>(opts.dragBehavior));
     
     if (id >= 0) {
+        QObject::connect(widget, &QObject::destroyed, [id]() {
+            RemoveGlassEffectView(id);
+        });
+
         long long variantVal = 0;  // NSGlassEffectView private variant
         long long materialVal = 0; // NSVisualEffectView fallback material
 

@@ -41,6 +41,8 @@
         bool ClearGlassViewShape(int viewId);
         bool SetGlassViewClipsToBounds(int viewId, bool enabled);
 
+        bool GlassEffectViewExists(int viewId);
+
         void RemoveGlassEffectView(int viewId);
     }
 #endif
