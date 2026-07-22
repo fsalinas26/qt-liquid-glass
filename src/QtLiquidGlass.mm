@@ -22,9 +22,6 @@ struct GlassContext {
     BOOL originalMovableByWindowBackground;
     BOOL originalOpaque;
     NSColor* originalBackgroundColor;
-    BOOL managesTitlebarStyle;
-    BOOL managesMovableByWindowBackground;
-    BOOL appliedMovableByWindowBackground;
     BOOL originalContainerWantsLayer;
     CGFloat originalContainerCornerRadius;
     BOOL originalContainerMasksToBounds;
@@ -97,6 +94,51 @@ static void InvalidateGlassEffectView(int viewId) {
   });
 }
 
+static void ApplyWindowPolicy(NSWindow* window,
+                              BOOL originalFullSizeContentView,
+                              BOOL originalTitlebarAppearsTransparent,
+                              BOOL originalMovableByWindowBackground,
+                              int titlebarStyle,
+                              int dragBehavior) {
+  if (!window) return;
+
+  NSWindowStyleMask styleMask = window.styleMask;
+  if (titlebarStyle == 1 || originalFullSizeContentView) {
+    styleMask |= NSWindowStyleMaskFullSizeContentView;
+  } else {
+    styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+  }
+  window.styleMask = styleMask;
+  window.titlebarAppearsTransparent =
+      titlebarStyle == 1 ? YES : originalTitlebarAppearsTransparent;
+
+  switch (dragBehavior) {
+    case 0:
+      window.movableByWindowBackground =
+          titlebarStyle == 1 ? YES : originalMovableByWindowBackground;
+      break;
+    case 2:
+      window.movableByWindowBackground = YES;
+      break;
+    case 3:
+      window.movableByWindowBackground = NO;
+      break;
+    default:
+      window.movableByWindowBackground = originalMovableByWindowBackground;
+      break;
+  }
+}
+
+static NSBox* CreateOpaqueBacking(NSRect frame) {
+  NSBox* backgroundView = [[NSBox alloc] initWithFrame:frame];
+  backgroundView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+  backgroundView.boxType = NSBoxCustom;
+  backgroundView.borderWidth = 0.0;
+  backgroundView.fillColor = [NSColor windowBackgroundColor];
+  backgroundView.wantsLayer = YES;
+  return backgroundView;
+}
+
 // -----------------------------------------------------------------------------
 // Implementation
 // -----------------------------------------------------------------------------
@@ -132,9 +174,6 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     BOOL originalMovableByWindowBackground = NO;
     BOOL originalOpaque = NO;
     NSColor *originalBackgroundColor = nil;
-    BOOL managesTitlebarStyle = NO;
-    BOOL managesMovableByWindowBackground = NO;
-    BOOL appliedMovableByWindowBackground = NO;
     NSRect originalHostFrame = rootView.frame;
     NSAutoresizingMaskOptions originalHostAutoresizingMask = rootView.autoresizingMask;
 
@@ -149,25 +188,12 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
         [win setOpaque:NO];
         [win setBackgroundColor:[NSColor clearColor]];
 
-        if (titlebarStyle == 1) {
-            win.styleMask |= NSWindowStyleMaskFullSizeContentView;
-            win.titlebarAppearsTransparent = YES;
-            managesTitlebarStyle = YES;
-        }
-
-        if (dragBehavior == 0 && titlebarStyle == 1) {
-            win.movableByWindowBackground = YES;
-            managesMovableByWindowBackground = YES;
-            appliedMovableByWindowBackground = YES;
-        } else if (dragBehavior == 2) {
-            win.movableByWindowBackground = YES;
-            managesMovableByWindowBackground = YES;
-            appliedMovableByWindowBackground = YES;
-        } else if (dragBehavior == 3) {
-            win.movableByWindowBackground = NO;
-            managesMovableByWindowBackground = YES;
-            appliedMovableByWindowBackground = NO;
-        }
+        ApplyWindowPolicy(win,
+                          originalFullSizeContentView,
+                          originalTitlebarAppearsTransparent,
+                          originalMovableByWindowBackground,
+                          titlebarStyle,
+                          dragBehavior);
         
         // Inject into NSThemeFrame's content slot, or swap if needed
         if ([rootView superview]) {
@@ -205,12 +231,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     // Optional opaque backing layer
     NSBox *backgroundView = nil;
     if (opaque) {
-        backgroundView = [[NSBox alloc] initWithFrame:frameRect];
-        backgroundView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        backgroundView.boxType = NSBoxCustom;
-        backgroundView.borderWidth = 0.0;
-        backgroundView.fillColor = [NSColor windowBackgroundColor];
-        backgroundView.wantsLayer = YES;
+        backgroundView = CreateOpaqueBacking(frameRect);
     }
 
     NSView *glass = nil;
@@ -259,9 +280,6 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
     ctx.originalMovableByWindowBackground = isRoot ? originalMovableByWindowBackground : NO;
     ctx.originalOpaque = isRoot ? originalOpaque : NO;
     ctx.originalBackgroundColor = isRoot ? originalBackgroundColor : nil;
-    ctx.managesTitlebarStyle = isRoot ? managesTitlebarStyle : NO;
-    ctx.managesMovableByWindowBackground = isRoot ? managesMovableByWindowBackground : NO;
-    ctx.appliedMovableByWindowBackground = isRoot ? appliedMovableByWindowBackground : NO;
     ctx.originalContainerWantsLayer = originalContainerWantsLayer;
     ctx.originalContainerCornerRadius = originalContainerCornerRadius;
     ctx.originalContainerMasksToBounds = originalContainerMasksToBounds;
@@ -291,12 +309,40 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
 // Sets corner radius (native setCornerRadius: or layer fallback) and tint color.
 // Also rounds the opaque backing layer and container (NSThemeFrame) to prevent
 // rectangular backgrounds from bleeding through transparent glass materials.
-extern "C" void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint, double r, double g, double b, double a) {
+extern "C" void ConfigureGlassView(int viewId,
+                                    double cornerRadius,
+                                    bool hasTint,
+                                    double r,
+                                    double g,
+                                    double b,
+                                    double a,
+                                    bool opaque,
+                                    int titlebarStyle,
+                                    int dragBehavior) {
   RUN_ON_MAIN(^{
     auto& registry = Registry();
     auto it = registry.find(viewId);
     if (it == registry.end()) return;
     GlassContext& ctx = it->second;
+
+    if (opaque && !ctx.backgroundView) {
+        NSBox* backgroundView = CreateOpaqueBacking(ctx.glassView.frame);
+        [ctx.containerView addSubview:backgroundView
+                           positioned:NSWindowBelow
+                           relativeTo:ctx.glassView];
+        ctx.backgroundView = backgroundView;
+        [backgroundView release];
+    } else if (!opaque && ctx.backgroundView) {
+        [ctx.backgroundView removeFromSuperview];
+        ctx.backgroundView = nil;
+    }
+
+    ApplyWindowPolicy(ctx.window,
+                      ctx.originalFullSizeContentView,
+                      ctx.originalTitlebarAppearsTransparent,
+                      ctx.originalMovableByWindowBackground,
+                      titlebarStyle,
+                      dragBehavior);
 
     if (ctx.glassView) {
         // NSGlassEffectView has its own setCornerRadius: (default 8.0)
@@ -362,26 +408,16 @@ extern "C" void RemoveGlassEffectView(int viewId) {
         [hostView release];
     }
     if (ctx.window) {
-        if (ctx.managesTitlebarStyle) {
-            NSWindowStyleMask styleMask = ctx.window.styleMask;
-            if (ctx.originalFullSizeContentView) {
-                styleMask |= NSWindowStyleMaskFullSizeContentView;
-            } else {
-                styleMask &= ~NSWindowStyleMaskFullSizeContentView;
-            }
-            ctx.window.styleMask = styleMask;
-            if (ctx.window.titlebarAppearsTransparent) {
-                ctx.window.titlebarAppearsTransparent = ctx.originalTitlebarAppearsTransparent;
-            }
-        }
-        if (ctx.managesMovableByWindowBackground &&
-            ctx.window.movableByWindowBackground == ctx.appliedMovableByWindowBackground) {
-            ctx.window.movableByWindowBackground = ctx.originalMovableByWindowBackground;
-        }
-        [ctx.window setOpaque:ctx.originalOpaque];
+        ApplyWindowPolicy(ctx.window,
+                          ctx.originalFullSizeContentView,
+                          ctx.originalTitlebarAppearsTransparent,
+                          ctx.originalMovableByWindowBackground,
+                          0,
+                          1);
         if (ctx.originalBackgroundColor) {
             [ctx.window setBackgroundColor:ctx.originalBackgroundColor];
         }
+        [ctx.window setOpaque:ctx.originalOpaque];
     }
     if (ctx.hostView) {
         QTLiquidGlassLifetimeToken *lifetimeToken =

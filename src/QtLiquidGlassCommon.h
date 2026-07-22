@@ -24,7 +24,16 @@
                                int dragBehavior);
         
         // Configure with raw color values (0.0 - 1.0) to avoid string parsing in ObjC
-        void ConfigureGlassView(int viewId, double cornerRadius, bool hasTint, double r, double g, double b, double a);
+        void ConfigureGlassView(int viewId,
+                                double cornerRadius,
+                                bool hasTint,
+                                double r,
+                                double g,
+                                double b,
+                                double a,
+                                bool opaque,
+                                int titlebarStyle,
+                                int dragBehavior);
         
         // Explicit setters for private and public properties
         void SetGlassViewVariant(int viewId, int variant);

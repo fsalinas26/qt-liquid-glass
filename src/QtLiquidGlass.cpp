@@ -131,7 +131,16 @@ void configure(int id, const Options& opts) {
         }
     }
     
-    ConfigureGlassView(id, opts.cornerRadius, hasTint, r, g, b, a);
+    ConfigureGlassView(id,
+                       opts.cornerRadius,
+                       hasTint,
+                       r,
+                       g,
+                       b,
+                       a,
+                       opts.opaque,
+                       static_cast<int>(opts.titlebarStyle),
+                       static_cast<int>(opts.dragBehavior));
     SetGlassViewBlendingMode(id, static_cast<int>(opts.blendingMode));
     SetGlassViewAdaptiveAppearance(id, static_cast<int>(opts.appearance));
     SetGlassViewInteractionState(id, static_cast<int>(opts.interaction));
