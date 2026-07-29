@@ -202,25 +202,43 @@ Explicit removal remains useful when an application wants to stop the effect bef
 On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector.
 
 ```cpp
+#include "QtLiquidGlass/QtLiquidGlass.h"
+#include <QApplication>
+#include <QMainWindow>
 #include <QPainterPath>
 #include <QTransform>
 
-QPainterPath pill;
-pill.addRoundedRect(QRectF(0, 0, 240, 64), 32, 32);
+int main(int argc, char *argv[]) {
+    QApplication a(argc, argv);
 
-if (QtLiquidGlass::Experimental::supportsCustomShapes(id)) {
-    QTransform transform;
-    transform.translate(12.0, 8.0);
-    transform.rotate(4.0);
-    QtLiquidGlass::Experimental::setShape(id, transform.map(pill));
-    QtLiquidGlass::Experimental::setClipsToBounds(id, true);
+    // 1. Create your window and add a glass effect
+    QMainWindow window;
+    window.setWindowFlags(Qt::Window);
+    int id = QtLiquidGlass::addGlassEffect(&window, QtLiquidGlass::Material::Sidebar);
+
+    // 2. Build a QWidget-local path (origin top-left, Y increases downward)
+    QPainterPath pill;
+    pill.addRoundedRect(QRectF(0, 0, 240, 64), 32, 32);
+
+    // 3. Apply the shape if the runtime supports it
+    if (QtLiquidGlass::Experimental::supportsCustomShapes(id)) {
+        QTransform transform;
+        transform.translate(12.0, 8.0);
+        transform.rotate(4.0);
+        QtLiquidGlass::Experimental::setShape(id, transform.map(pill));
+        QtLiquidGlass::Experimental::setClipsToBounds(id, true);
+    }
+
+    // Later, restore the default rectangle: Experimental::clearShape(id);
+
+    window.resize(600, 400);
+    window.show();
+
+    return a.exec();
 }
-
-// Restore the default rectangular glass surface.
-QtLiquidGlass::Experimental::clearShape(id);
 ```
 
-Paths use QWidget-local coordinates: origin at the top-left with Y increasing downward. The library converts them to AppKit coordinates while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` on the `QPainterPath` for animated translation, scaling, rotation, skewing, or morphing.
+> **Note**: Paths use QWidget-local coordinates (origin top-left, Y increasing downward); the library converts them to AppKit's Y-up space while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` for animated translation, scaling, rotation, skewing, or morphing. See the `ShapePlayground` example for an animated implementation.
 
 Custom paths are unavailable on the `NSVisualEffectView` fallback. Shape capability checks, path application, and path clearing return `false` when the effect ID is invalid or `_setPath:` is unsupported. Clipping is checked independently and may remain available on a fallback view when its runtime implements `setClipsToBounds:`.
 
