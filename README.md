@@ -106,24 +106,6 @@ The included example demonstrates how to switch materials and configure properti
   <img src="docs/images/demo.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
 </div>
 
-### Shape Playground
-
-The standalone `ShapePlayground` turns the demo's media-player theme into a
-practical custom-shape example. A compact player with an album-art lobe morphs
-into a full now-playing surface while the native glass effect remains alive.
-Click the player or press Space to reverse the interruptible spring transition;
-press Escape or right-click to close it.
-
-<div align="center">
-  <img src="docs/images/custom-shape.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
-</div>
-
-```bash
-cmake -S . -B build
-cmake --build build --target ShapePlayground
-./build/examples/ShapePlayground/ShapePlayground
-```
-
 ## 📚 API Documentation
 
 ### Methods
@@ -134,10 +116,12 @@ cmake --build build --target ShapePlayground
 | `configure(id, options)` | Updates the existing effect's options without replacing its native view. |
 | `setIntProperty(id, key, value)` | Sets a low-level property by name. Keys: `variant`, `material`, `scrimState`, `subduedState`, `contentLensing`, `appearance`, `interaction`, `blendingMode`. |
 | `remove(id)` | Removes the effect and cleans up native views. |
-| `Experimental::supportsCustomShapes(id)` | Reports whether the active native backend supports arbitrary glass paths. |
-| `Experimental::setShape(id, path)` | Applies a QWidget-local `QPainterPath` to the glass surface. |
-| `Experimental::clearShape(id)` | Restores the default rectangular glass surface. |
-| `Experimental::setClipsToBounds(id, enabled)` | Controls native clipping for the glass surface. |
+
+### Lifetime and thread requirements
+
+Call QtLiquidGlass from Qt's GUI thread. Calling `remove(id)` detaches the native effect and restores the window and container state captured when it was added. Destroying the host `QWidget` or native view also invalidates the effect automatically. Operations using a removed or otherwise stale ID are safe no-ops; experimental operations return `false`.
+
+Explicit removal remains useful when an application wants to stop the effect before destroying its host. It is safe to call `remove()` more than once for the same ID.
 
 ### Options
 
@@ -173,12 +157,6 @@ opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 
 `configure()` updates every field in `Options`. Material is passed separately to `addGlassEffect()` and still requires replacing the effect.
 
-### Lifetime and thread requirements
-
-Call QtLiquidGlass from Qt's GUI thread. Calling `remove(id)` detaches the native effect and restores the window and container state captured when it was added. Destroying the host `QWidget` or native view also invalidates the effect automatically. Operations using a removed or otherwise stale ID are safe no-ops; experimental operations return `false`.
-
-Explicit removal remains useful when an application wants to stop the effect before destroying its host. It is safe to call `remove()` more than once for the same ID.
-
 ### Materials
 
 | Enum | Description |
@@ -201,9 +179,16 @@ Explicit removal remains useful when an application wants to stop the effect bef
 
 > **Note**: AppKit publicly documents `NSGlassEffectView` with `Regular` and `Clear` styles. The additional material variants above use private `_variant` values discovered at runtime and may change across macOS releases.
 
-### Experimental custom shapes
+## 🧪 Experimental: Custom Shapes
 
 On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector.
+
+| Method | Description |
+|--------|-------------|
+| `Experimental::supportsCustomShapes(id)` | Reports whether the active native backend supports arbitrary glass paths. |
+| `Experimental::setShape(id, path)` | Applies a QWidget-local `QPainterPath` to the glass surface. |
+| `Experimental::clearShape(id)` | Restores the default rectangular glass surface. |
+| `Experimental::setClipsToBounds(id, enabled)` | Controls native clipping for the glass surface. |
 
 ```cpp
 #include "QtLiquidGlass/QtLiquidGlass.h"
@@ -247,6 +232,24 @@ int main(int argc, char *argv[]) {
 Custom paths are unavailable on the `NSVisualEffectView` fallback. Shape capability checks, path application, and path clearing return `false` when the effect ID is invalid or `_setPath:` is unsupported. Clipping is checked independently and may remain available on a fallback view when its runtime implements `setClipsToBounds:`.
 
 The `Material` enum is stable library API, while most of its native `NSGlassEffectView` mappings use private AppKit variants. The `Experimental` namespace is additive but runtime-dependent and should always be guarded by its capability check.
+
+### Example: ShapePlayground
+
+The standalone `ShapePlayground` turns the demo's media-player theme into a
+practical custom-shape example. A compact player with an album-art lobe morphs
+into a full now-playing surface while the native glass effect remains alive.
+Click the player or press Space to reverse the interruptible spring transition;
+press Escape or right-click to close it.
+
+<div align="center">
+  <img src="docs/images/custom-shape.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
+</div>
+
+```bash
+cmake -S . -B build
+cmake --build build --target ShapePlayground
+./build/examples/ShapePlayground/ShapePlayground
+```
 
 ## 🏗️ How It Works
 
