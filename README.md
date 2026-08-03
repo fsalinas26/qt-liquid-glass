@@ -181,7 +181,11 @@ opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 
 ## 🧪 Experimental: Custom Shapes
 
-On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector.
+<div align="center">
+  <img src="docs/images/custom-shape.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
+</div>
+
+On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector. The bundled `ShapePlayground` example — the morphing media player shown above — demonstrates it animated: click the player or press Space to toggle the interruptible spring transition.
 
 | Method | Description |
 |--------|-------------|
@@ -227,23 +231,13 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-> **Note**: Paths use QWidget-local coordinates (origin top-left, Y increasing downward); the library converts them to AppKit's Y-up space while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` for animated translation, scaling, rotation, skewing, or morphing. See the `ShapePlayground` example for an animated implementation.
+> **Note**: Paths use QWidget-local coordinates (origin top-left, Y increasing downward); the library converts them to AppKit's Y-up space while preserving lines and cubic curves. Reapply the path after resizing the glass host, and use `QTransform` for animated translation, scaling, rotation, skewing, or morphing.
 
 Custom paths are unavailable on the `NSVisualEffectView` fallback. Shape capability checks, path application, and path clearing return `false` when the effect ID is invalid or `_setPath:` is unsupported. Clipping is checked independently and may remain available on a fallback view when its runtime implements `setClipsToBounds:`.
 
 The `Material` enum is stable library API, while most of its native `NSGlassEffectView` mappings use private AppKit variants. The `Experimental` namespace is additive but runtime-dependent and should always be guarded by its capability check.
 
-### Example: ShapePlayground
-
-The standalone `ShapePlayground` turns the demo's media-player theme into a
-practical custom-shape example. A compact player with an album-art lobe morphs
-into a full now-playing surface while the native glass effect remains alive.
-Click the player or press Space to reverse the interruptible spring transition;
-press Escape or right-click to close it.
-
-<div align="center">
-  <img src="docs/images/custom-shape.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
-</div>
+Build and run the `ShapePlayground` example with:
 
 ```bash
 cmake -S . -B build
