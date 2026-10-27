@@ -3,7 +3,7 @@
 #include <QVBoxLayout>
 
 PreviewPage::PreviewPage(QWidget *parent) : QWidget(parent) {
-    m_materials = {"Sidebar", "Sheet", "Hud", "WindowBackground", "Popover", "Menu", "FullscreenUI", "ControlCenter", "Widgets", "Inspector", "Titlebar", "Tooltip", "Frosted", "Clear Glass", "Chromatic"};
+    m_materials = {"Sidebar", "Sheet", "Hud", "WindowBackground", "Popover", "Menu", "FullscreenUI", "ControlCenter", "Widgets", "Inspector", "Titlebar", "Tooltip", "Frosted", "ClearGlass", "Chromatic"};
     setupUi();
 }
 

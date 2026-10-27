@@ -8,7 +8,7 @@
 #include <QTimer>
 
 SettingsPage::SettingsPage(QWidget *parent) : QWidget(parent) {
-    m_materials = {"Sidebar", "Sheet", "Hud", "WindowBackground", "Popover", "Menu", "FullscreenUI", "ControlCenter", "Widgets", "Inspector", "Titlebar", "Tooltip", "Frosted", "Clear Glass", "Chromatic"};
+    m_materials = {"Sidebar", "Sheet", "Hud", "WindowBackground", "Popover", "Menu", "FullscreenUI", "ControlCenter", "Widgets", "Inspector", "Titlebar", "Tooltip", "Frosted", "ClearGlass", "Chromatic"};
     m_materialIndex = 0;
     m_appearances = {"Light", "Dark", "Auto"};
     m_appearanceIndex = 2;
