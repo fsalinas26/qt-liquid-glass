@@ -174,7 +174,7 @@ opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 | `Material::ControlCenter` | Modern, translucent module background |
 | `Material::Tooltip` | "Loupe" material for hover cards |
 | `Material::Frosted` | Softest, strongest blur, bright diffusion |
-| `Material::ClearGlass` | Almost no blur, crisp transparency with light RGB refraction |
+| `Material::ClearGlass` | Almost no blur, crisp transparency with light RGB refraction. On macOS 27.0.1 this variant draws no glass at all, so the surface is fully transparent. |
 | `Material::Chromatic` | Frosted look with chromatic aberration blur |
 
 > **Note**: AppKit publicly documents `NSGlassEffectView` with `Regular` and `Clear` styles. The additional material variants above use private `_variant` values discovered at runtime and may change across macOS releases.
