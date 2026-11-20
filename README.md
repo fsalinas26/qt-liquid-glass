@@ -23,7 +23,7 @@
 -  **Interaction States** — Normal and hovered states for interactive glass surfaces.
 -  **Custom Shapes** — Experimental `QPainterPath` geometry with `QTransform` support on compatible runtimes.
 -  **Safe Cleanup** — Effects are invalidated when their Qt or native host is destroyed, and explicit removal restores captured native state.
--  **Standard and Frameless Windows** — Supports standard Qt windows and includes a best-effort native wrapping path for frameless windows (`Qt::FramelessWindowHint`).
+-  **Standard and Frameless Windows** — Supports standard Qt windows and frameless windows (`Qt::FramelessWindowHint`).
 
 ## 🚀 Installation
 
@@ -58,7 +58,7 @@ If you prefer to install the library system-wide or use it across multiple proje
     ```
 
 ### Requirements
-- **macOS 26 (Tahoe)** for `NSGlassEffectView` (Liquid Glass). Falls back to `NSVisualEffectView` on macOS 10.14+.
+- **macOS 26 (Tahoe) or later** for `NSGlassEffectView` (Liquid Glass). Last verified on macOS 27.0.1. Falls back to `NSVisualEffectView` on macOS 10.14+.
 - **Qt 6.2+** (Core, Widgets)
 - **CMake 3.16+**
 
@@ -179,13 +179,15 @@ opts.dragBehavior = QtLiquidGlass::WindowDragBehavior::Preserve;
 
 > **Note**: AppKit publicly documents `NSGlassEffectView` with `Regular` and `Clear` styles. The additional material variants above use private `_variant` values discovered at runtime and may change across macOS releases.
 
+> **Note**: On macOS 27, glass follows the system-wide Liquid Glass tint setting. At higher tint levels materials render more opaque and look more alike, so the same `Material` can look different from one Mac to another. The library does not change this setting.
+
 ## 🧪 Experimental: Custom Shapes
 
 <div align="center">
   <img src="docs/images/custom-shape.png" width="700" style="border-radius: 12px; box-shadow: 0px 4px 20px rgba(0,0,0,0.4);">
 </div>
 
-On supported macOS 26 runtimes, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector. The bundled `ShapePlayground` example — the morphing media player shown above — demonstrates it animated: click the player or press Space to toggle the interruptible spring transition.
+On macOS 26 and 27 runtimes that support it, a glass surface can follow an arbitrary `QPainterPath`. The API is runtime-gated because it uses AppKit's private `_setPath:` selector. The bundled `ShapePlayground` example — the morphing media player shown above — demonstrates it animated: click the player or press Space to toggle the interruptible spring transition.
 
 | Method | Description |
 |--------|-------------|
@@ -247,7 +249,7 @@ cmake --build build --target ShapePlayground
 
 ## 🏗️ How It Works
 
-Qt-liquid-glass uses a native injection strategy to place the glass layer behind Qt's rendering surface for standard windows, child widgets, and best-effort frameless windows.
+Qt-liquid-glass uses a native injection strategy to place the glass layer behind Qt's rendering surface for standard windows, frameless windows, and child widgets.
 
 <div align="center">
   <img src="docs/images/diagram.png" width="700">
@@ -256,7 +258,7 @@ Qt-liquid-glass uses a native injection strategy to place the glass layer behind
 1.  **Native Backend**: Uses Objective-C++ to inject a native `NSView` into the window hierarchy.
 2.  **Smart Injection**:
     *   **Standard Windows**: Injects the glass view as a *sibling* behind the Qt root view in the `NSThemeFrame`.
-    *   **Frameless Windows**: Uses a best-effort native wrapper around the Qt root view so the glass can sit behind the Qt rendering layer.
+    *   **Frameless Windows**: Injects the glass view the same way, as a sibling behind the Qt root view in the borderless window's frame view. If the root view has no superview to inject into, the library wraps it in a native container instead.
     *   **Child Widgets**: Injects the glass view directly inside the widget's native view, behind its children.
     *   **Lifetime Tracking**: Uses Qt destruction callbacks and Objective-C associated objects to prevent registry entries from outliving their hosts.
     *   **Duplicate Detection**: Automatically removes an existing effect before re-adding to the same native host.
