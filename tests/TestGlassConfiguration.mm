@@ -135,6 +135,17 @@ int main(int argc, char** argv) {
         return fail("the requested tint was not applied");
     }
 
+    // Qt resets the style mask from its own window flags around fullscreen.
+    window.styleMask &= ~NSWindowStyleMaskFullSizeContentView;
+    window.titlebarAppearsTransparent = NO;
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:NSWindowDidExitFullScreenNotification
+                      object:window];
+    if (!(window.styleMask & NSWindowStyleMaskFullSizeContentView) ||
+        !window.titlebarAppearsTransparent) {
+        return fail("leaving fullscreen did not restore the titlebar policy");
+    }
+
     options.cornerRadius = 9.0;
     options.opaque = true;
     options.titlebarStyle = QtLiquidGlass::TitlebarStyle::Preserve;
@@ -163,6 +174,14 @@ int main(int argc, char** argv) {
         window.titlebarAppearsTransparent ||
         window.movableByWindowBackground) {
         return fail("Preserve overwrote application-managed window policy");
+    }
+    [[NSNotificationCenter defaultCenter]
+        postNotificationName:NSWindowDidExitFullScreenNotification
+                      object:window];
+    if ((window.styleMask & NSWindowStyleMaskFullSizeContentView) ||
+        window.titlebarAppearsTransparent ||
+        window.movableByWindowBackground) {
+        return fail("leaving fullscreen overwrote a preserved window policy");
     }
 
     options.cornerRadius = 6.0;

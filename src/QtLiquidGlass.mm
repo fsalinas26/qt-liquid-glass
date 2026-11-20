@@ -25,6 +25,9 @@ struct GlassContext {
     BOOL managesTitlebarStyle;
     BOOL managesMovableByWindowBackground;
     BOOL appliedMovableByWindowBackground;
+    int titlebarStyle;       // Last requested policy, re-applied after fullscreen
+    int dragBehavior;
+    id fullScreenObserver;   // Retained NSNotificationCenter token (root windows only)
     BOOL originalContainerWantsLayer;
     CGFloat originalContainerCornerRadius;
     BOOL originalContainerMasksToBounds;
@@ -85,6 +88,13 @@ static const void *kGlassLifetimeTokenKey = &kGlassLifetimeTokenKey;
     dispatch_sync(dispatch_get_main_queue(), block);        \
   }
 
+static void StopObservingFullScreen(GlassContext& ctx) {
+  if (!ctx.fullScreenObserver) return;
+  [[NSNotificationCenter defaultCenter] removeObserver:ctx.fullScreenObserver];
+  [ctx.fullScreenObserver release];
+  ctx.fullScreenObserver = nil;
+}
+
 static void InvalidateGlassEffectView(int viewId) {
   RUN_ON_MAIN(^{
     auto& registry = Registry();
@@ -93,6 +103,7 @@ static void InvalidateGlassEffectView(int viewId) {
     if (it->second.originalBackgroundColor) {
       [it->second.originalBackgroundColor release];
     }
+    StopObservingFullScreen(it->second);
     registry.erase(it);
   });
 }
@@ -136,6 +147,35 @@ static void ApplyWindowPolicy(NSWindow* window,
     default:
       break;
   }
+}
+
+// Qt rebuilds the window's style mask from its own window flags when a window
+// enters and leaves fullscreen, which drops the full-size content view and the
+// transparent titlebar. Put the requested policy back once the window is out.
+// AppKit keeps the content size when the style mask changes, so the frame it
+// just restored has to be set again or the window loses a titlebar of height.
+static id ObserveFullScreenExit(NSWindow* window, int viewId) {
+  id observer = [[NSNotificationCenter defaultCenter]
+      addObserverForName:NSWindowDidExitFullScreenNotification
+                  object:window
+                   queue:nil
+              usingBlock:^(NSNotification*) {
+                auto& registry = Registry();
+                auto it = registry.find(viewId);
+                if (it == registry.end()) return;
+                GlassContext& ctx = it->second;
+                const NSRect frame = ctx.window.frame;
+                ApplyWindowPolicy(ctx.window,
+                                  ctx.titlebarStyle,
+                                  ctx.dragBehavior,
+                                  &ctx.managesTitlebarStyle,
+                                  &ctx.managesMovableByWindowBackground,
+                                  &ctx.appliedMovableByWindowBackground);
+                if (!NSEqualRects(ctx.window.frame, frame)) {
+                  [ctx.window setFrame:frame display:YES];
+                }
+              }];
+  return [observer retain];
 }
 
 static NSBox* CreateOpaqueBacking(NSRect frame) {
@@ -300,6 +340,9 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
         isRoot ? managesMovableByWindowBackground : NO;
     ctx.appliedMovableByWindowBackground =
         isRoot ? appliedMovableByWindowBackground : NO;
+    ctx.titlebarStyle = titlebarStyle;
+    ctx.dragBehavior = dragBehavior;
+    ctx.fullScreenObserver = isRoot ? ObserveFullScreenExit(win, id) : nil;
     ctx.originalContainerWantsLayer = originalContainerWantsLayer;
     ctx.originalContainerCornerRadius = originalContainerCornerRadius;
     ctx.originalContainerMasksToBounds = originalContainerMasksToBounds;
@@ -357,6 +400,8 @@ extern "C" void ConfigureGlassView(int viewId,
         ctx.backgroundView = nil;
     }
 
+    ctx.titlebarStyle = titlebarStyle;
+    ctx.dragBehavior = dragBehavior;
     ApplyWindowPolicy(ctx.window,
                       titlebarStyle,
                       dragBehavior,
@@ -464,6 +509,7 @@ extern "C" bool RemoveGlassEffectView(int viewId) {
         objc_setAssociatedObject(ctx.hostView, kGlassContextIdKey, nil, OBJC_ASSOCIATION_ASSIGN);
     }
     if (ctx.originalBackgroundColor) [ctx.originalBackgroundColor release];
+    StopObservingFullScreen(ctx);
     registry.erase(it);
     removed = true;
   });
