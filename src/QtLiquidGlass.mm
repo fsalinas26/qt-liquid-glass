@@ -108,6 +108,14 @@ static void InvalidateGlassEffectView(int viewId) {
   });
 }
 
+// An opaque host view means Qt created the native window before it was made
+// translucent, so the glass behind it cannot show. Extending that opaque view
+// under a transparent titlebar leaves the window with nothing to drag, so the
+// titlebar is left as the application had it.
+static int EffectiveTitlebarStyle(NSView* hostView, int titlebarStyle) {
+  return hostView.isOpaque ? 0 : titlebarStyle;
+}
+
 static void ApplyWindowPolicy(NSWindow* window,
                               int titlebarStyle,
                               int dragBehavior,
@@ -166,7 +174,7 @@ static id ObserveFullScreenExit(NSWindow* window, int viewId) {
                 GlassContext& ctx = it->second;
                 const NSRect frame = ctx.window.frame;
                 ApplyWindowPolicy(ctx.window,
-                                  ctx.titlebarStyle,
+                                  EffectiveTitlebarStyle(ctx.hostView, ctx.titlebarStyle),
                                   ctx.dragBehavior,
                                   &ctx.managesTitlebarStyle,
                                   &ctx.managesMovableByWindowBackground,
@@ -242,7 +250,7 @@ extern "C" int AddGlassEffectView(void* nativeViewPtr,
         [win setBackgroundColor:[NSColor clearColor]];
 
         ApplyWindowPolicy(win,
-                          titlebarStyle,
+                          EffectiveTitlebarStyle(rootView, titlebarStyle),
                           dragBehavior,
                           &managesTitlebarStyle,
                           &managesMovableByWindowBackground,
@@ -403,7 +411,7 @@ extern "C" void ConfigureGlassView(int viewId,
     ctx.titlebarStyle = titlebarStyle;
     ctx.dragBehavior = dragBehavior;
     ApplyWindowPolicy(ctx.window,
-                      titlebarStyle,
+                      EffectiveTitlebarStyle(ctx.hostView, titlebarStyle),
                       dragBehavior,
                       &ctx.managesTitlebarStyle,
                       &ctx.managesMovableByWindowBackground,

@@ -96,7 +96,7 @@ int main(int argc, char *argv[]) {
 
 > **Note**: By default, the library sets `WA_TranslucentBackground`, makes the `NSWindow` transparent, and uses a transparent full-size titlebar so glass can extend behind the title area. In this default mode, AppKit background dragging is enabled automatically to keep the seamless titlebar interactive.
 
-Apply the effect before the widget's native window is created. If your application calls `winId()` or otherwise realizes the native handle first, set `Qt::WA_TranslucentBackground` before that happens; Qt cannot reliably change an already-created opaque `QNSWindow` into a translucent one.
+Apply the effect before the widget's native window is created. If your application calls `winId()` or otherwise realizes the native handle first, set `Qt::WA_TranslucentBackground` before that happens; Qt cannot reliably change an already-created opaque `QNSWindow` into a translucent one. If the effect is added to an opaque window anyway, the library logs a warning and leaves the titlebar as it was, so the window stays draggable.
 
 ## 🎛️ Demo Application
 

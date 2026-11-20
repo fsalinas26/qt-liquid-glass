@@ -322,6 +322,22 @@ int main(int argc, char** argv) {
     [nativeRoot release];
     [nativeWindow release];
 
+    QWidget lateWidget;
+    lateWidget.setWindowFlags(Qt::Window);
+    lateWidget.resize(150, 90);
+    NSView* lateHost = reinterpret_cast<NSView*>(lateWidget.winId());
+    NSWindow* lateWindow = lateHost.window;
+    if (!lateHost.isOpaque) return fail("a late-realized Qt window was not opaque");
+
+    const int lateId = QtLiquidGlass::addGlassEffect(&lateWidget);
+    if (lateId < 0) return fail("late glass insertion failed");
+    if ((lateWindow.styleMask & NSWindowStyleMaskFullSizeContentView) ||
+        lateWindow.titlebarAppearsTransparent ||
+        lateWindow.movableByWindowBackground) {
+        return fail("an opaque host still received the transparent titlebar policy");
+    }
+    QtLiquidGlass::remove(lateId);
+
     std::cout << "All glass configuration checks passed.\n";
     return 0;
 }

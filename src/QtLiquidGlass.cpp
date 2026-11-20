@@ -13,6 +13,15 @@ int addGlassEffect(QWidget* widget, Material material, const Options& opts) {
 #ifdef PLATFORM_OSX
     if (!widget) return -1;
     
+    if (widget->isWindow() &&
+        widget->testAttribute(Qt::WA_WState_Created) &&
+        !widget->testAttribute(Qt::WA_TranslucentBackground)) {
+        qWarning("QtLiquidGlass: the native window already exists and is opaque, "
+                 "so the glass will be hidden and the titlebar is left unchanged. "
+                 "Call addGlassEffect() or set Qt::WA_TranslucentBackground "
+                 "before the window is created.");
+    }
+
     // Ensure the widget has a native window handle
     if (!widget->testAttribute(Qt::WA_NativeWindow)) {
         widget->setAttribute(Qt::WA_NativeWindow);
